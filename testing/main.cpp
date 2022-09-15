@@ -6,7 +6,7 @@
 struct EnvironmentTemplate
 { 
     std::vector<double> states;
-    std::vector<std::vector<rl::Action>> actions;
+    std::vector<std::vector<mllib::rl::Action>> actions;
 };
 
 int main()
@@ -17,29 +17,29 @@ int main()
     
     myGridWorld.actions = {
         // state 0.0
-        { rl::Action({0.0, 1.0, 0.0, 0.0, 0.0, 0.0}, {0.0, -1.0, 0.0, 0.0, 0.0, 0.0}) },
+        { mllib::rl::Action({0.0, 1.0, 0.0, 0.0, 0.0, 0.0}, {0.0, -1.0, 0.0, 0.0, 0.0, 0.0}) },
         
         // state 1.0
-        { rl::Action({0.0, 0.0, 0.2, 0.8, 0.0, 0.0}, {0.0, -1.0, 10.0, -5.0, 0.0, 0.0}),
-          rl::Action({0.0, 0.0, 0.4, 0.6, 0.0, 0.0}, {0.0, -1.0, 5.0, -5.0, 0.0, 0.0}) },
+        { mllib::rl::Action({0.0, 0.0, 0.2, 0.8, 0.0, 0.0}, {0.0, -1.0, 10.0, -5.0, 0.0, 0.0}),
+          mllib::rl::Action({0.0, 0.0, 0.4, 0.6, 0.0, 0.0}, {0.0, -1.0, 5.0, -5.0, 0.0, 0.0}) },
           
         // state 2.1 
-        { rl::Action({0.0, 0.0, 0.0, 0.0, 1.0, 0.0}, {0.0, 0.0, 0.0, 0.0, -1.0, 0.0}) },
+        { mllib::rl::Action({0.0, 0.0, 0.0, 0.0, 1.0, 0.0}, {0.0, 0.0, 0.0, 0.0, -1.0, 0.0}) },
         
         // state 2.2        
-        { rl::Action({0.0, 0.0, 0.0, 0.0, 1.0, 0.0}, {0.0, 0.0, 0.0, 0.0, -1.0, 0.0}) },
+        { mllib::rl::Action({0.0, 0.0, 0.0, 0.0, 1.0, 0.0}, {0.0, 0.0, 0.0, 0.0, -1.0, 0.0}) },
         
         // state 3.0
-        { rl::Action({0.0, 0.0, 0.0, 0.0, 0.0, 1.0}, {0.0, 0.0, 0.0, 0.0, 0.0, -1.0}) },
+        { mllib::rl::Action({0.0, 0.0, 0.0, 0.0, 0.0, 1.0}, {0.0, 0.0, 0.0, 0.0, 0.0, -1.0}) },
         
         {}
     };
     
-    rl::Environment<double> myEnvironment = rl::Environment<double>(myGridWorld.states, myGridWorld.actions);
+    mllib::rl::Environment<double> myEnvironment = mllib::rl::Environment<double>(myGridWorld.states, myGridWorld.actions);
     
-    rl::Policy myPolicy = rl::Policy({{1.0}, {0.5, 0.5}, {1.0}, {1.0}, {1.0}, {}});
+    mllib::rl::Policy myPolicy = mllib::rl::Policy({{1.0}, {0.5, 0.5}, {1.0}, {1.0}, {1.0}, {}});
     
-    rl::Agent<double> myAgent = rl::Agent<double>(&myEnvironment, myPolicy);
+    mllib::rl::Agent<double> myAgent = mllib::rl::Agent<double>(&myEnvironment, myPolicy);
     
     myAgent.evalStateValue_TD(0.1, 0.1, 0.001, 100000);
     
