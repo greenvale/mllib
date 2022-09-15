@@ -10,7 +10,7 @@ Linear Regression
 namespace mllib
 {
 
-class LinearReg
+class LogisticReg
 {
     private:
         int m_numDim;
@@ -19,8 +19,8 @@ class LinearReg
         Matrix<double> m_y;
         Matrix<double> m_weights;
     public:
-        LinearReg();
-        LinearReg(Matrix<double> x, Matrix<double> y);
+        LogisticReg();
+        LogisticReg(Matrix<double> x, Matrix<double> y);
         
         void addFeatures(Matrix<double> x, Matrix<double> y);
         void removeFeature(int index);
@@ -28,14 +28,17 @@ class LinearReg
         void train(double alpha, double lambda, double trainTol, int maxNumIter);
         double loss(double lambda);
         Matrix<double> predict(Matrix<double> x);
+        
+        static Matrix<double> sigmoid(Matrix<double> z);
+        static double sigmoid(double z);
 };
 
-LinearReg::LinearReg() 
+LogisticReg::LogisticReg() 
 {
     
 }
 
-LinearReg::LinearReg(Matrix<double> x, Matrix<double> y)
+LogisticReg::LogisticReg(Matrix<double> x, Matrix<double> y)
 {
     assert(x.numRows() == y.numRows());
     
@@ -49,16 +52,23 @@ LinearReg::LinearReg(Matrix<double> x, Matrix<double> y)
 
 // calculate loss function given current weights and features
 // lambda is the regularisation parameter
-double LinearReg::loss(double lambda)
+double LogisticReg::loss(double lambda)
 {
     assert(lambda >= 0.0);
     
-    Matrix<double> result = 0.5 * (1.0/m_numFeatures) * ((m_x * m_weights) - m_y).getTranspose() * ((m_x * m_weights) - m_y) + lambda * (m_weights.getTranspose() * m_weights);
-    return result.scalar();
+    double result = 0.0;
+    
+    for (int i = 0; i < m_numFeatures; ++i)
+    {
+        result += (-1.0/m_numFeatures) * ((m_y.get(i, 0) * log(sigmoid(m_x.getRow(i) * m_weights).scalar())) + (1.0 - m_y.get(i, 0)) * log(1.0 - (sigmoid(m_x.getRow(i) * m_weights).scalar())));
+    }
+    result += (lambda * (m_weights.getTranspose() * m_weights)).scalar(); // regularisation
+    
+    return result;
 }
 
 // train model using gradient descent
-void LinearReg::train(double alpha, double lambda, double tol, int maxNumIter)
+void LogisticReg::train(double alpha, double lambda, double tol, int maxNumIter)
 {
     assert(alpha > 0.0);
     assert(lambda >= 0.0);
@@ -69,7 +79,7 @@ void LinearReg::train(double alpha, double lambda, double tol, int maxNumIter)
     int numIterations = 0;
     for (int i = 0; i < maxNumIter; ++i)
     {
-        m_weights -= alpha * (1.0/m_numFeatures) * (m_x.getTranspose()) * ((m_x * m_weights) - m_y) + (2 * lambda * m_weights); // gradient of loss function
+        m_weights -= alpha * (1.0/m_numFeatures) * (m_x.getTranspose()) * (sigmoid(m_x * m_weights) - m_y) + (2 * lambda * m_weights); // gradient of loss function
         numIterations++;
         if (loss(lambda) <= tol)
         {
@@ -81,14 +91,33 @@ void LinearReg::train(double alpha, double lambda, double tol, int maxNumIter)
 }
 
 // vectorised prediction
-Matrix<double> LinearReg::predict(Matrix<double> x)
+Matrix<double> LogisticReg::predict(Matrix<double> x)
 {
     assert(x.numCols() == m_numDim);
     assert(x.numRows() > 0);
     
     x.insertCol(0, Matrix<double>(x.numRows(), 1, 1.0));
-    Matrix<double> y = x * m_weights;
+    Matrix<double> y = sigmoid(x * m_weights);
     return y;
+}
+
+// (static) vectorised sigmoid function
+Matrix<double> LogisticReg::sigmoid(Matrix<double> z)
+{
+    assert(z.numCols() == 1);
+    
+    for (int i = 0; i < z.numRows(); ++i)
+    {
+        z.set(i, 0, sigmoid(z.get(i, 0)));
+    }
+    
+    return z;
+}
+
+// (static) scalar sigmoid function
+double LogisticReg::sigmoid(double z) 
+{
+    return 1.0 / (1.0 + exp(-z));
 }
 
 }
