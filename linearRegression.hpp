@@ -1,5 +1,6 @@
 /*
 Linear Regression
+- Requires Matrix class (available in mathlib)
 */
 
 #include <matrix.hpp>
