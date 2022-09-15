@@ -24,8 +24,8 @@ class LinearReg
         
         void addFeatures(Matrix<double> x, Matrix<double> y);
         void removeFeature(int index);
-        void train(double alpha, double trainTol, int maxNumIter);
-        double cost();
+        void train(double alpha, double lambda, double trainTol, int maxNumIter);
+        double cost(double lambda);
         Matrix<double> predict(Matrix<double> x);
 };
 
@@ -47,14 +47,15 @@ LinearReg::LinearReg(Matrix<double> x, Matrix<double> y)
 }
 
 // calculate cost function given current weights and features
-double LinearReg::cost()
+// lambda is the regularisation parameter
+double LinearReg::cost(double lambda)
 {
-    Matrix<double> result = 0.5 * (1.0/m_numFeatures) * ((m_x * m_weights) - m_y).getTranspose() * ((m_x * m_weights) - m_y);
+    Matrix<double> result = 0.5 * (1.0/m_numFeatures) * ((m_x * m_weights) - m_y).getTranspose() * ((m_x * m_weights) - m_y) + lambda * (m_weights.getTranspose() * m_weights);
     return result.get(0,0);
 }
 
 // train model using gradient descent
-void LinearReg::train(double alpha, double tol, int maxNumIter)
+void LinearReg::train(double alpha, double lambda, double tol, int maxNumIter)
 {
     assert(alpha > 0.0);
     assert(tol > 0.0);
@@ -65,17 +66,17 @@ void LinearReg::train(double alpha, double tol, int maxNumIter)
     int numIterations = 0;
     for (int n = 0; n < maxNumIter; ++n)
     {
-        m_weights -= alpha * (1.0/m_numFeatures) * (m_x.getTranspose()) * ((m_x * m_weights) - m_y);
+        m_weights -= alpha * (1.0/m_numFeatures) * (m_x.getTranspose()) * ((m_x * m_weights) - m_y) + (2 * lambda * m_weights);
         //double newCost = cost();
         //double costDif = fabs(newCost - prevCost);
         //prevCost = newCost;
         numIterations++;
-        if (cost() <= tol)
+        if (cost(lambda) <= tol)
         {
             break;
         }        
     }
-    std::cout << "Final cost: " << cost() << std::endl;
+    std::cout << "Final cost: " << cost(lambda) << std::endl;
     std::cout << "Number of iterations: " << numIterations << std::endl;
 }
 
