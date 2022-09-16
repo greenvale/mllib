@@ -1,7 +1,8 @@
 /*
-Linear Regression
+Logistic Regression
 - Requires Matrix class (available in mathlib)
 */
+#pragma once
 
 #include <matrix.hpp>
 #include <assert.h>
@@ -12,25 +13,26 @@ namespace mllib
 
 class LogisticReg
 {
-    private:
-        int m_numDim;
-        int m_numFeatures;
-        Matrix<double> m_x;
-        Matrix<double> m_y;
-        Matrix<double> m_weights;
-    public:
-        LogisticReg();
-        LogisticReg(Matrix<double> x, Matrix<double> y);
-        
-        void addFeatures(Matrix<double> x, Matrix<double> y);
-        void removeFeature(int index);
-        
-        void train(double alpha, double lambda, double trainTol, int maxNumIter);
-        double loss(double lambda);
-        Matrix<double> predict(Matrix<double> x);
-        
-        static Matrix<double> sigmoid(Matrix<double> z);
-        static double sigmoid(double z);
+private:
+    int m_numDim;
+    int m_numFeatures;
+    Matrix<double> m_x;
+    Matrix<double> m_y;
+    Matrix<double> m_weights;
+public:
+    LogisticReg();
+    LogisticReg(Matrix<double> x, Matrix<double> y);
+    
+    void addFeatures(Matrix<double> x, Matrix<double> y);
+    void removeFeature(int index);
+    
+    void train(double alpha, double lambda, double trainTol, int maxNumIter);
+    double loss(double lambda);
+    Matrix<double> predict(Matrix<double> x);
+    
+    static Matrix<double> sigmoid(Matrix<double> z);
+    static double sigmoid(double z);
+    static double sigmoidDeriv(double z);
 };
 
 LogisticReg::LogisticReg() 
@@ -102,6 +104,7 @@ Matrix<double> LogisticReg::predict(Matrix<double> x)
 }
 
 // (static) vectorised sigmoid function
+// copies matrix z on input
 Matrix<double> LogisticReg::sigmoid(Matrix<double> z)
 {
     assert(z.numCols() == 1);
@@ -118,6 +121,12 @@ Matrix<double> LogisticReg::sigmoid(Matrix<double> z)
 double LogisticReg::sigmoid(double z) 
 {
     return 1.0 / (1.0 + exp(-z));
+}
+
+// (static) scalar sigmoid derivative function
+double LogisticReg::sigmoidDeriv(double z)
+{
+    return sigmoid(z) * (1.0 - sigmoid(z));
 }
 
 }

@@ -2,6 +2,7 @@
 Linear Regression
 - Requires Matrix class (available in mathlib)
 */
+#pragma once
 
 #include <matrix.hpp>
 #include <assert.h>
@@ -12,22 +13,22 @@ namespace mllib
 
 class LinearReg
 {
-    private:
-        int m_numDim;
-        int m_numFeatures;
-        Matrix<double> m_x;
-        Matrix<double> m_y;
-        Matrix<double> m_weights;
-    public:
-        LinearReg();
-        LinearReg(Matrix<double> x, Matrix<double> y);
-        
-        void addFeatures(Matrix<double> x, Matrix<double> y);
-        void removeFeature(int index);
-        
-        void train(double alpha, double lambda, double trainTol, int maxNumIter);
-        double loss(double lambda);
-        Matrix<double> predict(Matrix<double> x);
+private:
+    int m_numDim;
+    int m_numFeatures;
+    Matrix<double> m_x;
+    Matrix<double> m_y;
+    Matrix<double> m_weights;
+public:
+    LinearReg();
+    LinearReg(Matrix<double> x, Matrix<double> y);
+    
+    void addFeatures(Matrix<double> x, Matrix<double> y);
+    void removeFeature(int index);
+    
+    void train(double alpha, double lambda, double trainTol, int maxNumIter);
+    double loss(double lambda);
+    Matrix<double> predict(Matrix<double> x);
 };
 
 LinearReg::LinearReg() 
