@@ -21,14 +21,22 @@ public:
     T value() const;
     int findInput(const Node* n) const;
     int findOutput(const Node* n) const;
-    void addInput(const Node* n);
-    void addOutput(const Node* n);
-    void removeInput(const Node* n);
-    void removeOutput(const Node* n);
+    
+    void addInput(Node* n);
+    void addOutput(Node* n);
+    void removeInput(Node* n);
+    void removeOutput(Node* n);
+    
     void joinInput(Node* n);
     void joinOutput(Node* n);
     void severInput(Node* n);
     void severOutput(Node* n);
+    
+    void joinInputs(const std::vector<Node*>& v);
+    void joinOutputs(const std::vector<Node*>& v);
+    void severInputs(const std::vector<Node*>& v);
+    void severOutputs(const std::vector<Node*>& v);
+    
     static void join(Node* n1, Node* n2);
     static void sever(Node* n1, Node* n2);
 };
@@ -91,7 +99,7 @@ int Node<T>::findOutput(const Node<T>* n) const
 
 // add input from node ptr
 template <class T>
-void Node<T>::addInput(const Node<T>* n)
+void Node<T>::addInput(Node<T>* n)
 {
     assert(this->findInput(n) == -1); // make sure input isn't already present
     this->m_inputs.push_back(n);
@@ -100,7 +108,7 @@ void Node<T>::addInput(const Node<T>* n)
 
 // add output from node ptr
 template <class T>
-void Node<T>::addOutput(const Node<T>* n)
+void Node<T>::addOutput(Node<T>* n)
 {
     assert(this->findInput(n) == -1); // make sure input isn't already present
     this->m_outputs.push_back(n);
@@ -109,7 +117,7 @@ void Node<T>::addOutput(const Node<T>* n)
 
 // remove input from node ptr
 template <class T>
-void Node<T>::removeInput(const Node<T>* n)
+void Node<T>::removeInput(Node<T>* n)
 {
     int index = this->findInput(n);
     assert(index != -1); // make sure input is present
@@ -119,7 +127,7 @@ void Node<T>::removeInput(const Node<T>* n)
 
 // remove output from node ptr
 template <class T>
-void Node<T>::removeOutput(const Node<T>* n)
+void Node<T>::removeOutput(Node<T>* n)
 {
     int index = this->findOutput(n);
     assert(index != -1); // make sure input is present
@@ -161,6 +169,50 @@ void Node<T>::severOutput(Node<T>* n)
 {
     this->removeOutput(n);
     n->removeInput(this);
+}
+
+// join inputs
+// assertion contained in addInput/Output
+template <class T>
+void Node<T>::joinInputs(const std::vector<Node<T>*>& v)
+{
+    for (int i = 0; i < v.size(); ++i)
+    {
+        this->joinInput(v[i]);
+    }
+}
+
+// join outputs
+// assertion contained in addInput/Output
+template <class T>
+void Node<T>::joinOutputs(const std::vector<Node<T>*>& v)
+{
+    for (int i = 0; i < v.size(); ++i)
+    {
+        this->joinOutput(v[i]);
+    }
+}
+
+// sever inputs
+// assertion contained in removeInput/Output
+template <class T>
+void Node<T>::severInputs(const std::vector<Node<T>*>& v)
+{
+    for (int i = 0; i < v.size(); ++i)
+    {
+        this->severInput(v[i]);
+    }
+}
+
+// sever outputs
+// assertion contained in removeInput/Output
+template <class T>
+void Node<T>::severOutputs(const std::vector<Node<T>*>& v)
+{
+    for (int i = 0; i < v.size(); ++i)
+    {
+        this->severOutput(v[i]);
+    }
 }
 
 // join a to b where b is a's output and a is b's input
@@ -216,9 +268,9 @@ public:
 template <class T>
 void Add<T>::exec()
 {
-    T value = 0.0;
+    this->m_value = 0.0;
     for (int i = 0; i < this->m_numInputs; ++i)
     {
-        value += this->m_inputs[i]->value();
+        this->m_value += this->m_inputs[i]->value();
     }
 }
