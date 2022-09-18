@@ -1,6 +1,7 @@
 /*
 Computational Graph library
 - double precision
+- nodes are doubly linked
 */
 
 #include <vector>
@@ -259,7 +260,7 @@ class CompGraph
 private:
     int m_numLayers;
     std::vector<int> m_shape;
-    std::vector<std::vector<Node*>> m_layers;
+    std::vector<std::vector<Node*>> m_layers; // first layer is input layer, last layer is output layer
 public:
     CompGraph();
     CompGraph(const std::vector<int>& shape);
@@ -272,6 +273,16 @@ public:
     
     std::vector<double> exec(const std::vector<double>& input);
     double deriv(const std::vector<std::vector<int>>& ind);
+    std::vector<double> gradDescent(
+        const std::vector<std::vector<int>>& weightInputInd, 
+        const std::vector<std::vector<int>>& staticInputInd,
+        const std::vector<int>& outputInd,
+        const std::vector<std::vector<std::vector<int>>>& weightDerivPath,
+        const std::vector<double>& initWeight,
+        const std::vector<double>& staticInput,
+        const double& alpha,
+        const int& maxIteration
+    );
 };
 
 /* default ctor */
@@ -387,18 +398,90 @@ std::vector<double> CompGraph::exec(const std::vector<double>& input)
 - uses chain rule
 - indexes in increasing order of layer
 */
-double CompGraph::deriv(const std::vector<std::vector<int>>& ind)
+double CompGraph::deriv(const std::vector<std::vector<int>>& path)
 {
     double d = 1.0; // set to multiplicative identity
-    for (int i = 0; i < ind.size() - 1; ++i)
+    for (int i = 0; i < path.size() - 1; ++i)
     {
-        assert(this->isJoined({ind[i], ind[i + 1]}) == true);
-        assert(ind[i][0] < ind[i + 1][0]);
+        assert(this->isJoined({path[i], path[i + 1]}) == true);
+        assert(path[i][0] < path[i + 1][0]);
         
-        Node* n0 = this->m_layers[ind[i][0]][ind[i][1]];
-        Node* n1 = this->m_layers[ind[i + 1][0]][ind[i + 1][1]];
+        Node* n0 = this->m_layers[path[i][0]][path[i][1]];
+        Node* n1 = this->m_layers[path[i + 1][0]][path[i + 1][1]];
         d *= n1->deriv(n0);
     }
     return d;
+}
+
+/* gradient descent
+- select inputs that are weights
+- select inputs that are static
+- select output that is optimal at zero - cost function must be scalar (one output)
+- assumes tree structure and therefore takes output[0] for derivative chain rule - IMPORTANT
+*/
+std::vector<double> CompGraph::gradDescent(
+    const std::vector<std::vector<int>>& weightInputInd, 
+    const std::vector<std::vector<int>>& staticInputInd,
+    const std::vector<int>& outputInd,
+    const std::vector<std::vector<std::vector<int>>>& weightDerivPath,    
+    const std::vector<double>& initWeight,
+    const std::vector<double>& staticInput,
+    const double& alpha,
+    const int& maxIteration
+)
+{
+    assert(weightInputInd.size() + staticInputInd.size() == this->m_layers[0].size()); // ensure consistent with input num
+    assert(weightInputInd.size() == initWeight.size());
+    assert(staticInputInd.size() == staticInput.size());
+    assert(weightDerivPath.size() == weightInputInd.size());
+    
+    std::vector<double> input(this->m_layers[0].size()); // create empty input vector the size of input layer
+    for (int i = 0; i < weightInputInd.size(); ++i)
+    {
+        assert(weightInputInd[i][0] == 0); // ensure all inputs are in first layer
+        input[weightInputInd[i][1]] = initWeight[i]; // set initial weights
+    }
+    for (int i = 0; i < staticInputInd.size(); ++i)
+    {
+        assert(staticInputInd[i][0] == 0); // ensure all inputs are in first layer
+        input[staticInputInd[i][1]] = staticInput[i]; // set static input
+    }
+    
+    for (int n = 0; n < maxIteration; ++n) // iteration loop
+    {
+        for (int i = 0; i < weightInputInd.size(); ++i)
+        {
+            this->get(weightInputInd[i])->exec(input[weightInputInd[i][1]]); // initialise weight inputs
+        }
+        for (int i = 0; i < staticInputInd.size(); ++i)
+        {
+            this->get(staticInputInd[i])->exec(input[staticInputInd[i][1]]); // initialise static inputs
+        }
+    
+        std::vector<double> output = this->exec(input); // execute graph with input
+        
+        std::vector<double> grad(weightInputInd.size()); // create empty vector for gradients for each weight
+        for (int i = 0; i < weightInputInd.size(); ++i)
+        {
+            assert(weightDerivPath[i][0] == weightInputInd[i]);
+            assert(weightDerivPath[i][weightDerivPath[i].size() - 1] == outputInd);
+            
+            grad[i] = this->deriv(weightDerivPath[i]); // get gradient of cost with respect to each weight
+        }
+        
+        for (int i = 0; i < weightInputInd.size(); ++i)
+        {
+            //this->get(weightInputInd[i])->exec(this->get(weightInputInd[i])->value() + (-1 * alpha * grad[i])); // adjust weight
+            input[weightInputInd[i][1]] += (-1 * alpha * grad[i]);
+        }
+    }
+    
+    std::vector<double> finalWeights(weightInputInd.size());
+    for (int i = 0; i < weightInputInd.size(); ++i)
+    {
+        finalWeights[i] = this->get(weightInputInd[i])->value(); 
+    }
+    
+    return finalWeights;
 }
 
