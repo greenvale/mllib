@@ -1,5 +1,6 @@
 /*
 Computational Graph library
+- double precision
 */
 
 #include <vector>
@@ -11,34 +12,33 @@ NODE
 - contains value
 */
 
-template <class T>
 class Node
 {
 protected:
-    T m_value;
+    double m_value;
     int m_numInputs;
     int m_numOutputs;
-    std::vector<Node<T>*> m_inputs;
-    std::vector<Node<T>*> m_outputs;
+    std::vector<Node*> m_inputs;
+    std::vector<Node*> m_outputs;
 public:
     Node();
     
-    T value() const;
-    int findInput(const Node<T>* n) const;
-    int findOutput(const Node<T>* n) const;
-    void addInput(Node<T>* n);
-    void addOutput(Node<T>* n);
-    void removeInput(Node<T>* n);
-    void removeOutput(Node<T>* n);
+    double value() const;
+    int findInput(const Node* n) const;
+    int findOutput(const Node* n) const;
+    void addInput(Node* n);
+    void addOutput(Node* n);
+    void removeInput(Node* n);
+    void removeOutput(Node* n);
     
     // overriden methods
-    virtual void exec(const T& value) {}
+    virtual void exec(const double& value) {}
     virtual void exec() {}
+    virtual double deriv(const Node* n);
 };
 
 /* ctor */
-template <class T>
-Node<T>::Node()
+Node::Node()
 {
     this->m_value = 0.0;
     this->m_numInputs = 0;
@@ -48,15 +48,13 @@ Node<T>::Node()
 }
 
 /* returns value of node */
-template <class T> 
-T Node<T>::value() const
+double Node::value() const
 {
     return this->m_value;
 }
 
 /* find  input index by node ptr, returns -1 if not found */
-template <class T>
-int Node<T>::findInput(const Node<T>* n) const
+int Node::findInput(const Node* n) const
 {
     assert(n != nullptr);
     for (int i = 0; i < this->m_numInputs; ++i)
@@ -69,28 +67,8 @@ int Node<T>::findInput(const Node<T>* n) const
     return -1;
 }
 
-/* add input by node ptr */
-template <class T>
-void Node<T>::addInput(Node<T>* n)
-{
-    assert(this->findInput(n) == -1); // make sure output isn't already present
-    this->m_inputs.push_back(n);
-    this->m_numInputs++;
-}
-
-/* remove input by node ptr */
-template <class T>
-void Node<T>::removeInput(Node<T>* n)
-{
-    int index = this->findInput(n);
-    assert(index != -1); // make sure input is present
-    this->m_inputs.erase(this->m_inputs.begin() + index);
-    this->m_numInputs--;
-}
-
 /* find output index by node ptr, returns -1 if not found */
-template <class T>
-int Node<T>::findOutput(const Node<T>* n) const
+int Node::findOutput(const Node* n) const
 {
     assert(n != nullptr);
     for (int i = 0; i < this->m_numOutputs; ++i)
@@ -103,23 +81,46 @@ int Node<T>::findOutput(const Node<T>* n) const
     return -1;
 }
 
-/* add output by node ptr */
-template <class T>
-void Node<T>::addOutput(Node<T>* n)
+/* add input by node ptr */
+void Node::addInput(Node* n)
 {
+    assert(n != this);
+    assert(this->findInput(n) == -1); // make sure output isn't already present
+    this->m_inputs.push_back(n);
+    this->m_numInputs++;
+}
+
+/* add output by node ptr */
+void Node::addOutput(Node* n)
+{
+    assert(n != this);
     assert(this->findOutput(n) == -1); // make sure output isn't already present
     this->m_outputs.push_back(n);
     this->m_numOutputs++;
 }
 
+/* remove input by node ptr */
+void Node::removeInput(Node* n)
+{
+    int index = this->findInput(n);
+    assert(index != -1); // make sure input is present
+    this->m_inputs.erase(this->m_inputs.begin() + index);
+    this->m_numInputs--;
+}
+
 /* remove output by node ptr */
-template <class T>
-void Node<T>::removeOutput(Node<T>* n)
+void Node::removeOutput(Node* n)
 {
     int index = this->findOutput(n);
     assert(index != -1); // make sure input is present
     this->m_outputs.erase(this->m_outputs.begin() + index);
     this->m_numOutputs--;
+}
+
+/* derivative */
+double Node::deriv(const Node* n)
+{
+    return 0.0;
 }
 
 /*
@@ -128,17 +129,15 @@ INPUT
 - 
 */
 
-template <class T>
-class Input : public Node<T>
+class Input : public Node
 {
 private:
 public:
-    void exec(const T& value);
+    void exec(const double& value);
 };
 
 /* execute */
-template <class T>
-void Input<T>::exec(const T& value)
+void Input::exec(const double& value)
 {
     assert(this->m_numInputs == 0); // check node configuration is correct
     this->m_value = value;
@@ -150,21 +149,28 @@ OUTPUT
 - 
 */
 
-template <class T>
-class Output : public Node<T>
+class Output : public Node
 {
 private:
 public:
     void exec();
+    double deriv(const Node* n);
 };
 
 /* execute */
-template <class T>
-void Output<T>::exec()
+void Output::exec()
 {
     assert(this->m_numInputs == 1); // check node configuration is correct
     assert(this->m_numOutputs == 0);
     this->m_value = this->m_inputs[0]->value();
+}
+
+/* derivative 
+- always constant 1
+*/
+double Output::deriv(const Node* n)
+{
+    return 1.0;
 }
 
 /*
@@ -173,23 +179,30 @@ ADD
 - exec sums input values into value
 */ 
 
-template <class T>
-class Sum : public Node<T>
+class Sum : public Node
 {
 private:
 public:
     void exec();
+    double deriv(const Node* n);
 };
 
 /* execute */
-template <class T>
-void Sum<T>::exec()
+void Sum::exec()
 {
-    this->m_value = 0.0; // set to identity
+    this->m_value = 0.0; // set to additive identity
     for (int i = 0; i < this->m_numInputs; ++i)
     {
         this->m_value += this->m_inputs[i]->value();
     }
+}
+
+/* derivative 
+- always constant 1
+*/
+double Sum::deriv(const Node* n)
+{
+    return 1.0;
 }
 
 /*
@@ -198,23 +211,38 @@ MULTIPLY
 - exec multiplies input values into value
 */ 
 
-template <class T>
-class Mult : public Node<T>
+class Mult : public Node
 {
 private:
 public:
     void exec();
+    double deriv(const Node* n);
 };
 
 /* execute */
-template <class T>
-void Mult<T>::exec()
+void Mult::exec()
 {
-    this->m_value = 1.0; // set to identity
+    this->m_value = 1.0; // set to multiplicative identity
     for (int i = 0; i < this->m_numInputs; ++i)
     {
         this->m_value *= this->m_inputs[i]->value();
     }
+}
+
+/* derivative 
+- differentiates operator with respect to input (multiple of other inputs values)
+*/
+double Mult::deriv(const Node* n)
+{
+    double d = 1.0; // set to multiplicative identity
+    for (int i = 0; i < this->m_numInputs; ++i)
+    {
+        if (this->m_inputs[i] != n)
+        {
+            d *= this->m_inputs[i]->value();
+        }
+    }
+    return d;
 }
 
 /*
@@ -226,47 +254,44 @@ COMPUTATIONAL GRAPH
 - there is currently no enforcement of input-operation-output structure (however, it will exec if not done properly)
 */ 
 
-template <class T>
 class CompGraph
 {
 private:
     int m_numLayers;
     std::vector<int> m_shape;
-    std::vector<std::vector<Node<T>*>> m_layers;
+    std::vector<std::vector<Node*>> m_layers;
 public:
     CompGraph();
     CompGraph(const std::vector<int>& shape);
     
-    void set(const std::vector<int>& ind, Node<T>* n);
-    Node<T>* get(const std::vector<int>& ind);
-    void join(const std::vector<int>& ind0, const std::vector<int>& ind1);
-    void sever(const std::vector<int>& ind0, const std::vector<int>& ind1);
+    void set(const std::vector<int>& ind, Node* n);
+    Node* get(const std::vector<int>& ind);
+    void join(const std::vector<std::vector<int>>& ind);
+    void sever(const std::vector<std::vector<int>>& ind);
+    bool isJoined(const std::vector<std::vector<int>>& ind);
     
-    std::vector<T> exec(const std::vector<T>& input);
+    std::vector<double> exec(const std::vector<double>& input);
+    double deriv(const std::vector<std::vector<int>>& ind);
 };
 
 /* default ctor */
-template <class T>
-CompGraph<T>::CompGraph()
+CompGraph::CompGraph()
 {
 }
 
 /* ctor with shape */
-template <class T>
-CompGraph<T>::CompGraph(const std::vector<int>& shape)
+CompGraph::CompGraph(const std::vector<int>& shape)
 {
-    m_numLayers = shape.size();
-    m_shape = shape;
-    for (int i = 0; i < m_numLayers; ++i)
+    this->m_numLayers = shape.size();
+    this->m_shape = shape;
+    for (int i = 0; i < this->m_numLayers; ++i)
     {
-        std::vector<Node<T>*> vec(shape[i]);
-        m_layers.push_back(vec); // create vector of nullptrs for each layer
+        this->m_layers.push_back(std::vector<Node*>(shape[i])); // create vector of nullptrs for each layer
     }
 }
 
 /* set node */
-template <class T>
-void CompGraph<T>::set(const std::vector<int>& ind, Node<T>* n)
+void CompGraph::set(const std::vector<int>& ind, Node* n)
 {
     assert(n != nullptr);
     assert(ind.size() == 2);
@@ -277,8 +302,7 @@ void CompGraph<T>::set(const std::vector<int>& ind, Node<T>* n)
 }
 
 /* get node */
-template <class T>
-Node<T>* CompGraph<T>::get(const std::vector<int>& ind)
+Node* CompGraph::get(const std::vector<int>& ind)
 {
     assert(ind.size() == 2);
     assert((ind[0] >= 0) && (ind[0] < this->m_numLayers));
@@ -289,32 +313,54 @@ Node<T>* CompGraph<T>::get(const std::vector<int>& ind)
 
 /* join node pair (assertion contained in get) 
 - node @ ind0 precedes node @ ind1
+- indexes in increasing order of layer
 */
-template <class T>
-void CompGraph<T>::join(const std::vector<int>& ind0, const std::vector<int>& ind1)
+void CompGraph::join(const std::vector<std::vector<int>>& ind)
 {
-    this->get(ind0)->addOutput(this->get(ind1));
-    this->get(ind1)->addInput(this->get(ind0));
+    assert(ind.size() == 2);
+    assert(ind[0][0] < ind[1][0]);
+    
+    this->get(ind[0])->addOutput(this->get(ind[1]));
+    this->get(ind[1])->addInput(this->get(ind[0]));
 }
 
 /* sever node pair 
 - node @ ind0 precedes node @ ind1
+- indexes in increasing order of layer
 */
-template <class T>
-void CompGraph<T>::sever(const std::vector<int>& ind0, const std::vector<int>& ind1)
+void CompGraph::sever(const std::vector<std::vector<int>>& ind)
 {
-    this->get(ind0)->removeOutput(this->get(ind1));
-    this->get(ind1)->removeInput(this->get(ind0));
+    assert(ind.size() == 2);
+    assert(ind[0][0] < ind[1][0]);
+    
+    this->get(ind[0])->removeOutput(this->get(ind[1]));
+    this->get(ind[1])->removeInput(this->get(ind[0]));
+}
+
+/* is joined
+- node @ ind0 precedes node @ ind1
+- indexes in increasing order of layer
+*/
+bool CompGraph::isJoined(const std::vector<std::vector<int>>& ind)
+{   
+    assert(ind.size() == 2);
+    assert(ind[0][0] < ind[1][0]);
+    
+    Node* n0 = this->m_layers[ind[0][0]][ind[0][1]];
+    Node* n1 = this->m_layers[ind[1][0]][ind[1][1]];
+    if ((n0->findOutput(n1) != -1) && (n1->findInput(n0) != -1))
+    {
+        return true;
+    }
+    return false;
 }
 
 /* execute */
-template <class T>
-std::vector<T> CompGraph<T>::exec(const std::vector<T>& input) 
+std::vector<double> CompGraph::exec(const std::vector<double>& input) 
 {
-    assert(input.size() == m_shape[0]);
+    assert(input.size() == this->m_shape[0]);
     
-    std::vector<T> output(m_shape[m_numLayers - 1]);
-    
+    std::vector<double> output(this->m_shape[m_numLayers - 1]);
     for (int i = 0; i < this->m_numLayers; ++i)
     {
         for (int j = 0; j < this->m_shape[i]; ++j)
@@ -334,7 +380,25 @@ std::vector<T> CompGraph<T>::exec(const std::vector<T>& input)
             }
         }
     }
-    
     return output;
+}
+
+/* derivative 
+- uses chain rule
+- indexes in increasing order of layer
+*/
+double CompGraph::deriv(const std::vector<std::vector<int>>& ind)
+{
+    double d = 1.0; // set to multiplicative identity
+    for (int i = 0; i < ind.size() - 1; ++i)
+    {
+        assert(this->isJoined({ind[i], ind[i + 1]}) == true);
+        assert(ind[i][0] < ind[i + 1][0]);
+        
+        Node* n0 = this->m_layers[ind[i][0]][ind[i][1]];
+        Node* n1 = this->m_layers[ind[i + 1][0]][ind[i + 1][1]];
+        d *= n1->deriv(n0);
+    }
+    return d;
 }
 
