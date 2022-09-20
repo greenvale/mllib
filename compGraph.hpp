@@ -451,11 +451,11 @@ std::vector<double> CompGraph::gradDescent(
     {
         for (int i = 0; i < weightInputInd.size(); ++i)
         {
-            this->get(weightInputInd[i])->exec(input[weightInputInd[i][1]]); // initialise weight inputs
+            this->get(weightInputInd[i])->exec(input[weightInputInd[i][1]]); // initialise weight inputs with input array
         }
         for (int i = 0; i < staticInputInd.size(); ++i)
         {
-            this->get(staticInputInd[i])->exec(input[staticInputInd[i][1]]); // initialise static inputs
+            this->get(staticInputInd[i])->exec(input[staticInputInd[i][1]]); // initialise static inputs with input array
         }
     
         std::vector<double> output = this->exec(input); // execute graph with input
@@ -471,15 +471,15 @@ std::vector<double> CompGraph::gradDescent(
         
         for (int i = 0; i < weightInputInd.size(); ++i)
         {
-            //this->get(weightInputInd[i])->exec(this->get(weightInputInd[i])->value() + (-1 * alpha * grad[i])); // adjust weight
-            input[weightInputInd[i][1]] += (-1 * alpha * grad[i]);
+            //this->get(weightInputInd[i])->exec(this->get(weightInputInd[i])->value() + (-1 * alpha * grad[i])); 
+            input[weightInputInd[i][1]] += (-1 * alpha * grad[i]); // adjust weight in input array
         }
     }
     
     std::vector<double> finalWeights(weightInputInd.size());
     for (int i = 0; i < weightInputInd.size(); ++i)
     {
-        finalWeights[i] = this->get(weightInputInd[i])->value(); 
+        finalWeights[i] = this->get(weightInputInd[i])->value(); // obtain final weights
     }
     
     return finalWeights;
