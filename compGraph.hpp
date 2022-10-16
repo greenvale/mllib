@@ -1,539 +1,417 @@
-/*
-Computational Graph library
-- feed-forward, i.e. you have inputs are computed with operations to get outputs in one direction
-- double precision
-- nodes are singly linked
-- does not work with cycles
+/* Computational graph library, W Denny
+    - computational graph's for machine learning
+    - includes optimisation functions targetted for machine learning
+    - note there is NO SAFEGUARDING so far in this class, that means any incorrect implementation cannot be prevented
 */
 
+#pragma once
 #include <vector>
-#include <assert.h>
+#include <numeric>
+#include <iostream>
 
-/*
-***************************************************************************************************************************
-NODE
-- contains value
-- contains vector of parent nodes on which node value will depend
+/* Position data structure 
+    - graphs are represented in 2d, nodes have a row and a col
 */
+class Pos
+{
+public:
+    unsigned int m_col;
+    unsigned int m_row;
+    Pos() {}
+    Pos(const unsigned int& col, const unsigned int& row)
+    {
+        this->m_col = col;
+        this->m_row = row;
+    }
+};
 
+/*****************************************************************************************************/
+
+/* Node data structure
+    - holds a value in double precision
+    - holds a pointer to an operation base class functor that in reality is a derived class
+    - holds a position value in the graph
+    - holds array of ptrs to child nodes
+*/
+class Op; // declare op class to reference ptr to Op
 class Node
 {
-protected:
-    double m_value;
-    int m_numParents;
-    std::vector<Node*> m_parents;
 public:
-    Node();
-    double value() const;
-    int findParent(const Node* n) const;
-    virtual void addParent(Node* n); // can be overriden for output node
-    void removeParent(const Node* n);
-    
-    // overriden methods
-    virtual void exec() {}
-    virtual double deriv(const Node* n) const { return 0.0; } // gets derivative with respect to other node (zero by default, must be specified in derived class)
+    Pos m_pos;
+    double m_val = 0.0;
+    Op* m_op;
+    std::vector<Node*> m_parArr;
+    std::vector<Node*> m_childArr;
+    std::vector<double> m_derivArr;
+    Node() {}
+};
+
+/*****************************************************************************************************/
+
+/* Operation functors 
+*/
+/* base class */
+class Op
+{
+public:
+    Op() {}
+    Op(const double& val) {}
+    virtual void operator()(Node* node) { }
+    virtual void derivatives(Node* node) { } // takes derivative with respect to parent ptr
+};
+
+/* summation */
+class Sum : public Op
+{
+public:
+    void operator()(Node* node)
+    {
+        node->m_val = 0.0; // set to identity
+        for (int i = 0; i < node->m_parArr.size(); ++i)
+        {
+            node->m_val += node->m_parArr[i]->m_val;
+        }
+    }
+    void derivatives(Node* node)
+    {
+        for (int i = 0; i < node->m_derivArr.size(); ++i)
+        {
+            node->m_derivArr[i] = 1.0;
+        }
+    }
+};
+
+/* multiplication */
+class Mul : public Op
+{
+public:
+    void operator()(Node* node)
+    {
+        node->m_val = 1.0; // set to identity
+        for (int i = 0; i < node->m_parArr.size(); ++i)
+        {
+            node->m_val *= node->m_parArr[i]->m_val;
+        }
+    }
+    void derivatives(Node* node)
+    {
+        for (int i = 0; i < node->m_parArr.size(); ++i)
+        {
+            node->m_derivArr[i] = node->m_val / node->m_parArr[i]->m_val;
+        }
+    }
+};
+
+/* square 
+    - assumes only one parent in parArr
+*/
+class Squ : public Op
+{
+public:
+    void operator()(Node* node)
+    {
+        node->m_val = node->m_parArr[0]->m_val * node->m_parArr[0]->m_val;
+    }
+    void derivatives(Node* node)
+    {
+        node->m_derivArr[0] = 2.0 * node->m_parArr[0]->m_val;
+    }
+};
+
+/*****************************************************************************************************/
+
+/* Config for computational graph - element of adjacency list
+    - adjacency list of each node with its children in position form
+*/
+class AdjListElem
+{
+public:
+    Pos m_pos;
+    std::vector<Pos> m_parArr;
+    std::vector<Pos> m_childArr;
+    Op* m_op;
+    AdjListElem() {}
+    AdjListElem(const Pos& pos, const std::vector<Pos>& parArr, const std::vector<Pos>& childArr, Op* op)
+    {
+        this->m_pos = pos;
+        this->m_parArr = parArr;
+        this->m_childArr = childArr;
+        this->m_op = op;
+    }
+};
+
+/*****************************************************************************************************/
+
+/* Chain of derivatives
+
+*/
+class DerivChain
+{
+public:
+    std::vector<Node*> m_nodeArr;
+    std::vector<unsigned int> m_indArr;
+    DerivChain()
+    {
+
+    }
+};
+
+/*****************************************************************************************************/
+
+/* Computational graph class 
+    - exec operation executes each col to get node value and calculates the derviatives
+    - derivatives with respect to each node's parent are calculated and stored in an array in the node
+*/
+class CompGraph
+{   
+private:
+    unsigned int m_numNodes;
+    std::vector<unsigned int> m_shape;
+    std::vector<Node*> m_nodeArr;
+public:
+    CompGraph() = delete;
+    CompGraph(const std::vector<unsigned int>& shape, const std::vector<AdjListElem*>& adjList);
+    unsigned int pos2ind(const Pos& pos);
+    void exec();
+    double readVal(const Pos& pos);
+    double readDeriv(const Pos& pos, const unsigned int& ind);
+    void writeVal(const Pos& pos, const double& val);
+    void reset();
+
+    // optimisation
+    DerivChain getChain(const Pos& start, const Pos& end);
+    double chainDeriv(const DerivChain& chain);
+    void optimise(
+        const std::vector<Pos>& weightPosArr,
+        const std::vector<Pos>& staticPosArr,
+        const Pos& costPos,
+        const std::vector<double>& initWeight,
+        const std::vector<std::vector<std::vector<double>>>& batchArray
+    );
 };
 
 /* ctor */
-Node::Node()
+CompGraph::CompGraph(const std::vector<unsigned int>& shape, const std::vector<AdjListElem*>& adjList)
 {
-    this->m_value = 0.0;
-    this->m_numParents = 0;
-    this->m_parents = {};
-}
+    this->m_shape = shape; // copy shape vector
+    this->m_numNodes = std::accumulate(this->m_shape.begin(), this->m_shape.end(), 0); // get total number of nodes
+    this->m_nodeArr = std::vector<Node*>(this->m_numNodes); // initialise node ptr array
 
-/* returns value of node */
-double Node::value() const
-{
-    return this->m_value;
-}
-
-/* find output index by node ptr, returns -1 if not found */
-int Node::findParent(const Node* n) const
-{
-    assert(n != nullptr);
-    for (int i = 0; i < this->m_numParents; ++i)
+    // create nodes
+    for (int i = 0; i < adjList.size(); ++i)
     {
-        if (this->m_parents[i] == n)
+        this->m_nodeArr[i] = new Node();
+        this->m_nodeArr[i]->m_op = adjList[i]->m_op;
+        this->m_nodeArr[i]->m_pos = adjList[i]->m_pos;
+        this->m_nodeArr[i]->m_derivArr = std::vector<double>(adjList[i]->m_parArr.size(), 0.0); // derivative array is same size as parent array
+    }
+
+    // link nodes in the graph
+    for (int i = 0; i < adjList.size(); ++i)
+    {
+        this->m_nodeArr[i]->m_parArr = {};
+        this->m_nodeArr[i]->m_childArr = {};
+        for (int j = 0; j < adjList[i]->m_parArr.size(); ++j)
         {
-            return i;
+            Node* par = this->m_nodeArr[this->pos2ind(adjList[i]->m_parArr[j])];
+            this->m_nodeArr[i]->m_parArr.push_back(par);
+        }
+        for (int j = 0; j < adjList[i]->m_childArr.size(); ++j)
+        {
+            Node* child = this->m_nodeArr[this->pos2ind(adjList[i]->m_childArr[j])];
+            this->m_nodeArr[i]->m_childArr.push_back(child);
         }
     }
-    return -1;
 }
 
-/* add parent by node ptr */
-void Node::addParent(Node* n)
+/* position converted to index in nodeArr */
+unsigned int CompGraph::pos2ind(const Pos& pos)
 {
-    assert(this != n); // nodes cannot connect to themselves
-    assert(this->findParent(n) == -1); // make sure output isn't already present [O(n) search]
-    this->m_parents.push_back(n);
-    this->m_numParents++;
+    unsigned int ind = 0;
+    for (int i = 0; i < pos.m_col; ++i)
+        ind += this->m_shape[i];
+    ind += pos.m_row;
+    return ind;
 }
 
-/* remove parent by node ptr */
-void Node::removeParent(const Node* n)
+/* read from node value */
+double CompGraph::readVal(const Pos& pos) 
 {
-    int ind = this->findParent(n); // [O(n) search]
-    assert(ind != -1); // make sure input is present
-    this->m_parents.erase(this->m_parents.begin() + ind);
-    this->m_numParents--;
+    return this->m_nodeArr[this->pos2ind(pos)]->m_val;
 }
 
-/*
-***************************************************************************************************************************
-INPUT
-- no derivative as it is not applicable
-- no exec as it is not applicable
-*/
-
-class Input : public Node
+/* reads from deriv array at given index within array */
+double CompGraph::readDeriv(const Pos& pos, const unsigned int& ind)
 {
-private:
-public:
-    void set(const double& value);
-};
-
-void Input::set(const double& value)
-{
-    this->m_value = value;
+    return this->m_nodeArr[this->pos2ind(pos)]->m_derivArr[ind];
 }
 
-/*
-***************************************************************************************************************************
-OUTPUT
-- contains value of one other operation
-*/
-
-class Output : public Node
+/* write to node value */
+void CompGraph::writeVal(const Pos& pos, const double& val) 
 {
-private:
-public:
-    void addParent(Node* n);
-    void exec();
-    double deriv(const Node* n) const;
-};
-
-/* add parent - overwritten to ensure only one parent added */
-void Output::addParent(Node* n)
-{
-    assert(this->m_numParents == 0); // output can only be connected to the value of one node
-    
-    assert(this->findParent(n) == -1); // make sure output isn't already present
-    this->m_parents.push_back(n);
-    this->m_numParents++;
-    
+    this->m_nodeArr[this->pos2ind(pos)]->m_val = val;
 }
 
-/* execute */
-void Output::exec()
+/* resets the graph by setting all values to zero */
+void CompGraph::reset() 
 {
-    this->m_value = this->m_parents[0]->value();
-}
-
-/* derivative 
-- always constant 1
-*/
-double Output::deriv(const Node* n) const
-{
-    return 1.0;
-}
-
-/*
-***************************************************************************************************************************
-SUM
-- exec sums input values into value
-*/ 
-
-class Sum : public Node
-{
-private:
-public:
-    void exec();
-    double deriv(const Node* n) const;
-};
-
-/* execute */
-void Sum::exec()
-{
-    assert(this->m_numParents > 0); // ensure that operation is valid
-    this->m_value = 0.0; // set to additive identity
-    for (int i = 0; i < this->m_numParents; ++i)
+    for (int i = 0; i < this->m_numNodes; ++i)
     {
-        this->m_value += this->m_parents[i]->value();
-    }
-}
-
-/* derivative 
-- always constant 1
-*/
-double Sum::deriv(const Node* n) const
-{
-    if (this->findParent(n) != -1)
-    {
-        return 1.0;
-    }
-    else
-    {
-        return 0.0;
-    }
-}
-
-/*
-***************************************************************************************************************************
-MULTIPLY
-- exec multiplies input values into value
-*/ 
-
-class Mult : public Node
-{
-private:
-public:
-    void exec();
-    double deriv(const Node* n) const;
-};
-
-/* execute */
-void Mult::exec()
-{
-    assert(this->m_numParents > 0); // ensure that operation is valid
-    this->m_value = 1.0; // set to multiplicative identity
-    for (int i = 0; i < this->m_numParents; ++i)
-    {
-        this->m_value *= this->m_parents[i]->value();
-    }
-}
-
-/* derivative 
-- differentiates operator with respect to input (multiple of other inputs values)
-- does not use assert to avoid extra O(n) search
-*/
-double Mult::deriv(const Node* n) const
-{
-    double flag = 0.0;
-    double d = 1.0; // set to multiplicative identity
-    for (int i = 0; i < this->m_numParents; ++i)
-    {
-        if (this->m_parents[i] != n)
+        this->m_nodeArr[i]->m_val = 0.0; // reset node values
+        for (int j = 0; j < this->m_nodeArr[i]->m_derivArr.size(); ++j)
         {
-            d *= this->m_parents[i]->value();
-        }
-        else
-        {
-            flag = 1.0; // n is a parent node, therefore raise flag to 1.0 to not return 0.0
+            this->m_nodeArr[i]->m_derivArr[j] = 0.0; // reset value of derivative of node with respect to each child
         }
     }
-    return d * flag;
 }
 
-/*
-***************************************************************************************************************************
-COMPUTATIONAL GRAPH
-- each layer contains nodes that are independent of eachother meaning they can be executed in any order
-- uses (layerInd, nodeInd) indexing method instead of ptrs
-*/ 
-
-class CompGraph
+/* execute graph */ 
+void CompGraph::exec()
 {
-private:
-    int m_numLayers;
-    int m_numInputs;
-    int m_numOutputs;
-    std::vector<int> m_shape;
-    std::vector<std::vector<Node*>> m_layers;   // vector of vectors of node ptrs for each layer
-    std::vector<Input*> m_inputs;                  // vector of node ptrs that are inputs to graph
-    std::vector<Output*> m_outputs;                // vector of node ptrs that are outputs of graph
-    
-    //std::vector<Node*> m_staticInputs;          // for graph optimisation against cost function           
-    //std::vector<Node*> m_optimInputs;
-    
-public:
-    CompGraph();
-    CompGraph(const std::vector<int>& shape);
-    
-    void set(const std::vector<int>& ind, Node* n);                    // sets node ptr at (layerInd, nodeInd)
-    void setInput(const std::vector<int>& ind, Input* n);
-    void setOutput(const std::vector<int>& ind, Output* n);
-    Node* get(const std::vector<int>& ind) const;       // gets node ptr at (layerInd, nodeInd)
-    
-    void join(const std::vector<int>& ind0, const std::vector<int>& ind1);
-    void sever(const std::vector<int>& ind0, const std::vector<int>& ind1);
-    bool isJoined(const std::vector<int>& ind0, const std::vector<int>& ind1) const;
-    
-    std::vector<double> exec(const std::vector<double>& inputValues) const;
-    double deriv(const std::vector<std::vector<int>>& path) const;                // gets chain rule derivative given path of nodes by index
-    std::vector<std::vector<int>> derivPath(const std::vector<int>& indNum, const std::vector<int>& indDenom) const; // only functions properly with tree graphs
-    
-    std::vector<double> gradDescent(
-        const std::vector<std::vector<int>>& optimInputInd
-    )
-    
-    /*
-    std::vector<double> gradDescent(
-        const std::vector<std::vector<int>>& weightInputInd, 
-        const std::vector<std::vector<int>>& staticInputInd,
-        const std::vector<int>& outputInd,
-        const std::vector<std::vector<std::vector<int>>>& weightDerivPath,
-        const std::vector<double>& initWeight,
-        const std::vector<double>& staticInput,
-        const double& alpha,
-        const int& maxIteration
-    );
-    */
-};
-
-/* default ctor */
-CompGraph::CompGraph()
-{
-}
-
-/* ctor with shape */
-CompGraph::CompGraph(const std::vector<int>& shape)
-{
-    this->m_numLayers = shape.size();
-    this->m_shape = shape;
-    for (int i = 0; i < this->m_numLayers; ++i)
+    for (int i = 0; i < this->m_numNodes; ++i)
     {
-        this->m_layers.push_back(std::vector<Node*>(shape[i])); // create vector of nullptrs for each layer
-    }
-    this->m_numInputs = 0;
-    this->m_numOutputs = 0;
-}
-
-/* set node */
-void CompGraph::set(const std::vector<int>& ind, Node* n)
-{
-    assert(n != nullptr);
-    assert(ind.size() == 2);
-    assert((ind[0] >= 0) && (ind[0] < this->m_numLayers));
-    assert((ind[1] >= 0) && (ind[1] < this->m_shape[ind[0]]));
-    
-    this->m_layers[ind[0]][ind[1]] = n;
-}
-
-/* set input node */
-void CompGraph::setInput(const std::vector<int>& ind, Input* n)
-{
-    this->set(ind, n);
-    this->m_inputs.push_back(n);
-    this->m_numInputs++;
-}
-
-/* set output node */
-void CompGraph::setOutput(const std::vector<int>& ind, Output* n)
-{
-    this->set(ind, n);
-    this->m_outputs.push_back(n);
-    this->m_numOutputs++;
-}
-
-/* get node */
-Node* CompGraph::get(const std::vector<int>& ind) const
-{
-    assert(ind.size() == 2);
-    assert((ind[0] >= 0) && (ind[0] < this->m_numLayers));
-    assert((ind[1] >= 0) && (ind[1] < this->m_shape[ind[0]]));
-    
-    return this->m_layers[ind[0]][ind[1]];
-}
-
-/* join node pair (assertion contained in get) 
-- node @ ind0 precedes node @ ind1
-- indexes in increasing order of layer
-*/
-void CompGraph::join(const std::vector<int>& ind0, const std::vector<int>& ind1)
-{
-    assert(ind0.size() == 2);
-    assert(ind1.size() == 2);
-    assert(ind0[0] < ind1[0]);
-    
-    this->get(ind1)->addParent(this->get(ind0));
-}
-
-/* sever node pair 
-- node @ ind0 precedes node @ ind1
-- indexes in increasing order of layer
-*/
-void CompGraph::sever(const std::vector<int>& ind0, const std::vector<int>& ind1)
-{
-    assert(ind0.size() == 2);
-    assert(ind1.size() == 2);
-    assert(ind0[0] < ind1[0]);
-    
-    this->get(ind1)->removeParent(this->get(ind0));
-}
-
-/* is joined
-- node @ ind0 precedes node @ ind1
-- indexes in increasing order of layer
-*/
-bool CompGraph::isJoined(const std::vector<int>& ind0, const std::vector<int>& ind1) const
-{   
-    assert(ind0.size() == 2);
-    assert(ind1.size() == 2);
-    assert(ind0[0] < ind1[0]);
-    
-    Node* n0 = this->m_layers[ind0[0]][ind0[1]];
-    Node* n1 = this->m_layers[ind1[0]][ind1[1]];
-    if (n1->findParent(n0) != -1)
-    {
-        return true;
-    }
-    return false;
-}
-
-/* execute
-- input values correspond to each input node in each layer
-- returns output values
-*/
-std::vector<double> CompGraph::exec(const std::vector<double>& inputValues) const
-{
-    // set inputs
-    assert(inputValues.size() == this->m_inputs.size()); 
-    for (int i = 0; i < this->m_numInputs; ++i)
-    {
-        this->m_inputs[i]->set(inputValues[i]);
-    }
-
-    // execute each layer
-    for (int i = 0; i < this->m_numLayers; ++i)
-    {
-        for (int j = 0; j < this->m_shape[i]; ++i)
+        if (this->m_nodeArr[i]->m_op != nullptr) // check if operation has been defined
         {
-            this->m_layers[i][j]->exec();
+            (*this->m_nodeArr[i]->m_op)(this->m_nodeArr[i]); // calculate values
+            this->m_nodeArr[i]->m_op->derivatives(this->m_nodeArr[i]); // calculate derivatives
         }
     }
-    
-    // get values of outputs
-    std::vector<double> outputValues(this->m_numOutputs);
-    for (int i = 0; i < this->m_numOutputs; ++i)
-    {
-        outputValues[i] = this->m_outputs[i]->value();
-    }
-    return outputValues;
 }
 
-/* derivative 
-- uses chain rule
-- indexes in increasing order of layer
-*/
-double CompGraph::deriv(const std::vector<std::vector<int>>& path) const
+/*****************************************************************************************************/
+/* Optimisation */
+
+/* get chain between two nodes
+    - uses a queue for breadth-first search
+    - goes in reverse from end node to start node, because indexes apply to the child node
+ */
+DerivChain CompGraph::getChain(const Pos& start, const Pos& end)
 {
-    double d = 1.0; // set to multiplicative identity
-    for (int i = 0; i < path.size() - 1; ++i)
+    Node* startNode = this->m_nodeArr[this->pos2ind(start)];
+    Node* endNode = this->m_nodeArr[this->pos2ind(end)];
+
+    std::vector<DerivChain> queue = {};
+
+    // initialise queue with singleton deriv chains onto the parent nodes for the end node
+    for (unsigned int i = 0; i < endNode->m_parArr.size(); ++i)
     {
-        assert(this->isJoined(path[i], path[i + 1]) == true);
-        assert(path[i][0] < path[i + 1][0]);
+        DerivChain dc;
+        dc.m_indArr = { i }; // add parent index from child node
+        dc.m_nodeArr = { endNode }; // add child node
+        queue.push_back(dc);
+    }
+
+    // dequeue and process nodes until the queue is empty or deriv chain found
+    while (queue.size() > 0)
+    {
+        DerivChain dc = queue[0]; // copy deriv chain from queue and dequeue
+        queue.erase(queue.begin());
         
-        Node* n0 = this->m_layers[path[i][0]][path[i][1]];
-        Node* n1 = this->m_layers[path[i + 1][0]][path[i + 1][1]];
-        d *= n1->deriv(n0); // get derivative with respect to parent node
+        // check if this is the necessary deriv chain
+        if ((dc.m_nodeArr.back())->m_parArr[dc.m_indArr.back()] == startNode)
+        {
+            return dc;
+        }
+        else // the node that is pointed to by the index in the child's parent array is not the start node
+        {
+            for (unsigned int i = 0; i < (dc.m_nodeArr.back())->m_parArr[dc.m_indArr.back()]->m_parArr.size(); ++i)
+            {
+                DerivChain dcNew = dc; // copy dc and add extra node
+                dcNew.m_indArr.push_back( i );
+                dcNew.m_nodeArr.push_back( (dc.m_nodeArr.back())->m_parArr[dc.m_indArr.back()] );
+                queue.push_back(dcNew);
+            }
+        }
     }
-    return d;
+    return DerivChain(); // return empty deriv chain as chain not found
 }
 
-/* derivative path
-- gets the path of derivatives for chain rule between a given operation/input (denominator) and operation/output (numerator)
-*/
-std::vector<std::vector<int>> CompGraph::derivPath(const std::vector<int>& indNum, const std::vector<int>& indDenom) const
+/* get chain derivative */
+double CompGraph::chainDeriv(const DerivChain& chain)
 {
-    std::vector<std::vector<int>> derivPath = {};
-    std::vector<std::vector<std::vector<int>>> pathStack;
-    
-    pathStack.push_back( { indNum } ); // initialise path stack with num node
-    while (pathStack.size() != 0)
+    double result = 1.0; // set to multiplicative identity
+    for (int i = 0; i < chain.m_indArr.size(); ++i)
     {
-        // pop the stack 
-        std::vector<std::vector<int>> path = pathStack[pathStack.size() - 1];
-        path.pop_back();
-        
-        // get child nodes if this isn't the denom ind
-        std::vector<int> pathEndInd = path[path.size() - 1];
-        if (pathEndInd == indDenom)
-        {
-            // break
-            derivPath = path;
-            break;
-        }
-        else
-        {
-            // get 
-        }
+        result *= chain.m_nodeArr[i]->m_derivArr[chain.m_indArr[i]];
     }
+    return result;
 }
 
-
-/* gradient descent
-- select inputs that are weights
-- select inputs that are static
-- select output that is optimal at zero - cost function must be scalar (one output)
-- assumes tree structure and therefore takes output[0] for derivative chain rule - IMPORTANT
+/* optimise to a single sample
+    - input variables are either weight or static
+    - the sample data is static
+    - the optimisation parameters are weights
+    - gradient descent is used
+    - optimised such that some scalar cost is zero
 */
-/*
-std::vector<double> CompGraph::gradDescent(
-    const std::vector<std::vector<int>>& weightInputInd, 
-    const std::vector<std::vector<int>>& staticInputInd,
-    const std::vector<int>& outputInd,
-    const std::vector<std::vector<std::vector<int>>>& weightDerivPath,    
+void CompGraph::optimise(
+    const std::vector<Pos>& weightPosArr,
+    const std::vector<Pos>& staticPosArr,
+    const Pos& costPos,
     const std::vector<double>& initWeight,
-    const std::vector<double>& staticInput,
-    const double& alpha,
-    const int& maxIteration
+    const std::vector<std::vector<std::vector<double>>>& batchArr
 )
 {
-    assert(weightInputInd.size() + staticInputInd.size() == this->m_layers[0].size()); // ensure consistent with input num
-    assert(weightInputInd.size() == initWeight.size());
-    assert(staticInputInd.size() == staticInput.size());
-    assert(weightDerivPath.size() == weightInputInd.size());
-    
-    std::vector<double> input(this->m_layers[0].size()); // create empty input vector the size of input layer
-    for (int i = 0; i < weightInputInd.size(); ++i)
+    // get derivative chains
+    std::vector<DerivChain> derivChainArr;
+    for (int i = 0; i < weightPosArr.size(); ++i)
     {
-        assert(weightInputInd[i][0] == 0); // ensure all inputs are in first layer
-        input[weightInputInd[i][1]] = initWeight[i]; // set initial weights
+        derivChainArr.push_back(this->getChain(weightPosArr[i], costPos));
     }
-    for (int i = 0; i < staticInputInd.size(); ++i)
+
+    std::vector<double> derivArr(weightPosArr.size()); // allocate derivative array
+
+    // initialise weights
+    for (int i = 0; i < weightPosArr.size(); ++i)
     {
-        assert(staticInputInd[i][0] == 0); // ensure all inputs are in first layer
-        input[staticInputInd[i][1]] = staticInput[i]; // set static input
+        this->m_nodeArr[this->pos2ind(weightPosArr[i])]->m_val = initWeight[i];
     }
-    
-    for (int n = 0; n < maxIteration; ++n) // iteration loop
+
+    bool stop = false;
+    int counter = 0;
+    while (stop == false)
     {
-        for (int i = 0; i < weightInputInd.size(); ++i)
+        std::cout << "Iteration: " << counter << std::endl;
+        int batchInd = counter % batchArr.size();
+        std::cout << "Batch index: " << batchInd << std::endl;
+        double derivTot = 0.0;
+
+        // set the deriv array elements to zero - this will be used for accumulating error
+        for (int i = 0; i < derivArr.size(); ++i)
+            derivArr[i] = 0.0;
+
+        // loop through samples in batch and accumulate cost derivatives for each weight in derivArr
+        for (int i = 0; i < batchArr[batchInd].size(); ++i)
         {
-            this->get(weightInputInd[i])->exec(input[weightInputInd[i][1]]); // initialise weight inputs with input array
+            // set sample value
+            for (int j = 0; j < staticPosArr.size(); ++j)
+            {
+                this->m_nodeArr[this->pos2ind(staticPosArr[j])]->m_val = batchArr[batchInd][i][j];
+            }
+
+            // execute graph
+            this->exec();
+
+            // calculate chain derivs of cost with respect to each weight
+            for (int j = 0; j < derivArr.size(); ++j)
+            {
+                derivArr[j] += this->chainDeriv(derivChainArr[j]);
+                derivTot += this->chainDeriv(derivChainArr[j]);
+            }
         }
-        for (int i = 0; i < staticInputInd.size(); ++i)
+
+        // adjust weights
+        for (int i = 0; i < weightPosArr.size(); ++i)
         {
-            this->get(staticInputInd[i])->exec(input[staticInputInd[i][1]]); // initialise static inputs with input array
+            this->m_nodeArr[this->pos2ind(weightPosArr[i])]->m_val += -0.5 * 0.01 * derivArr[i];
         }
-    
-        std::vector<double> output = this->exec(input); // execute graph with input
-        
-        std::vector<double> grad(weightInputInd.size()); // create empty vector for gradients for each weight
-        for (int i = 0; i < weightInputInd.size(); ++i)
+
+        // check convergence
+        if (derivTot < 0.001)
         {
-            assert(weightDerivPath[i][0] == weightInputInd[i]);
-            assert(weightDerivPath[i][weightDerivPath[i].size() - 1] == outputInd);
-            
-            grad[i] = this->deriv(weightDerivPath[i]); // get gradient of cost with respect to each weight
+            stop = true;
         }
-        
-        for (int i = 0; i < weightInputInd.size(); ++i)
-        {
-            //this->get(weightInputInd[i])->exec(this->get(weightInputInd[i])->value() + (-1 * alpha * grad[i])); 
-            input[weightInputInd[i][1]] += (-1 * alpha * grad[i]); // adjust weight in input array
-        }
+        counter++;
     }
-    
-    std::vector<double> finalWeights(weightInputInd.size());
-    for (int i = 0; i < weightInputInd.size(); ++i)
-    {
-        finalWeights[i] = this->get(weightInputInd[i])->value(); // obtain final weights
-    }
-    
-    return finalWeights;
 }
-*/
 

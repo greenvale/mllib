@@ -1,59 +1,47 @@
+
+#include <vector>
 #include <iostream>
-
-/*
-#include <matrix.hpp>
-#include <linearRegression.hpp>
-#include <logisticRegression.hpp>
-#include <nn.hpp>
-*/
-#include <compGraph2.hpp>
-
-
+#include "../../compGraph.hpp"
 
 int main()
 {
-    CompGraph cg({6, 3, 1, 1, 1});
+    // operations
+    Sum* sum = new Sum();
+    Mul* mul = new Mul();
+    Squ* squ = new Squ();
     
-    Constant constantOperator;
-    Mult multiplyOperator;
-    Sum sumOperator;
-    Power squareOperator(2.0);
-    
-    cg.set({0, 0}, &constantOperator, INPUT); // w0
-    cg.set({0, 1}, &constantOperator, INPUT); // w1
-    cg.set({0, 2}, &constantOperator, INPUT); // x0
-    cg.set({0, 3}, &constantOperator, INPUT); // x1
-    cg.set({0, 4}, &constantOperator, INPUT); // y
-    cg.set({0, 5}, &constantOperator, INPUT); // -1
-    
-    cg.set({1, 0}, &multiplyOperator, STEP); 
-    cg.set({1, 1}, &multiplyOperator, STEP);
-    cg.set({1, 2}, &multiplyOperator, STEP);
-    
-    cg.set({2, 0}, &sumOperator, OUTPUT);
-    cg.set({3, 0}, &sumOperator, STEP);
-    cg.set({4, 0}, &squareOperator, OUTPUT);
-    
-    cg.join({{0, 0}, {0, 2}}, {{1, 0}});
-    cg.join({{0, 1}, {0, 3}}, {{1, 1}});
-    cg.join({{0, 4}, {0, 5}}, {{1, 2}});
-    cg.join({{1, 0}, {1, 1}}, {{2, 0}});
-    cg.join({{2, 0}, {1, 2}}, {{3, 0}});
-    cg.join({{3, 0}}, {{4, 0}});
-    
+    std::vector<AdjListElem*> adjList;
+
+    adjList.push_back(new AdjListElem(Pos(0, 0), {}, {Pos(1, 0)}, nullptr));
+    adjList.push_back(new AdjListElem(Pos(0, 1), {}, {Pos(1, 0)}, nullptr));
+    adjList.push_back(new AdjListElem(Pos(1, 0), {Pos(0, 0), Pos(0, 1)}, {Pos(2, 0)}, mul));
+    adjList.push_back(new AdjListElem(Pos(2, 0), {Pos(1, 0)}, {}, squ));
+
+    CompGraph cg({2, 1, 1}, adjList);
+    cg.reset();
+    cg.writeVal(Pos(0, 0), 2.0);
+    cg.writeVal(Pos(0, 1), 3.0);
+    cg.exec();
+    std::cout << cg.readVal(Pos(2, 0)) << std::endl;
+    std::cout << cg.readDeriv(Pos(2, 0), 0) << std::endl;
+
     /*
-    std::vector<double> optimInput = cg.gradDescent(
-        {{0, 0}, {0, 1}},
-        {{0, 2}, {0, 3}, {0, 4}, {0, 5}},
-        {4, 0},
-        0.1,
-        0.001,
-        100,
-        {0.0, 1.0},
-        {{0.0, 1.0, 1.0, -1.0}}
-    );
+    DerivChain dc = cg.getChain(Pos(0, 1), Pos(2, 0));
+    for (int i = 0; i < dc.m_nodeArr.size(); ++i)
+    {
+        std::cout << "Node pos: " << dc.m_nodeArr[i]->m_pos.m_col << ", " << dc.m_nodeArr[i]->m_pos.m_row << " @ index " << dc.m_indArr[i] << std::endl;
+    }
+    std::cout << cg.chainDeriv(dc) << std::endl;
     */
+
+    cg.optimise(
+        {Pos(0, 0)},
+        {Pos(0, 1)},
+        Pos(2, 0),
+        {0.5},
+        {{{2.0}}}
+    );
+
+    std::cout << cg.readVal(Pos(2, 0)) << std::endl;
+    std::cout << cg.readVal(Pos(0, 0)) << std::endl;
 }
-
-/* ********************************************************************************************** */
-
