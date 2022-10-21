@@ -9,6 +9,9 @@
 #include <numeric>
 #include <iostream>
 
+namespace mllib
+{
+
 /* Position data structure 
     - graphs are represented in 2d, nodes have a row and a col
 */
@@ -224,7 +227,9 @@ CompGraph::CompGraph(const std::vector<unsigned int>& shape, const std::vector<A
     }
 }
 
-/* position converted to index in nodeArr */
+/* position converted to index in nodeArr 
+     - note this function requires simple optimisation by using accumulations
+*/
 unsigned int CompGraph::pos2ind(const Pos& pos)
 {
     unsigned int ind = 0;
@@ -326,7 +331,7 @@ DerivChain CompGraph::getChain(const Pos& start, const Pos& end)
     return DerivChain(); // return empty deriv chain as chain not found
 }
 
-/* get chain derivative */
+/* calculate chain derivative */
 double CompGraph::chainDeriv(const DerivChain& chain)
 {
     double result = 1.0; // set to multiplicative identity
@@ -337,7 +342,7 @@ double CompGraph::chainDeriv(const DerivChain& chain)
     return result;
 }
 
-/* optimise to a single sample
+/* optimise for a vector of batches of sample data
     - input variables are either weight or static
     - the sample data is static
     - the optimisation parameters are weights
@@ -415,3 +420,4 @@ void CompGraph::optimise(
     }
 }
 
+}; // namespace mllib
