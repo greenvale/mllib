@@ -8,6 +8,7 @@
 #include <vector>
 #include <numeric>
 #include <iostream>
+#include <cmath>
 
 namespace mllib
 {
@@ -51,7 +52,10 @@ public:
 
 /*****************************************************************************************************/
 
-/* Operation functors 
+/* Operation functors
+    - contains operator() function that takes a node ptr and executes a mathematical function using the values from parent nodes of the given nodes
+    - the derivatives function is to be run once the operator() function is executed
+    - the derivatives function calculates the derivatives with respect to each of the parent nodes and stores them in derivArr in the node
 */
 /* base class */
 class Op
@@ -63,7 +67,9 @@ public:
     virtual void derivatives(Node* node) { } // takes derivative with respect to parent ptr
 };
 
-/* summation */
+/* summation 
+    - takes any number of inputs
+*/
 class Sum : public Op
 {
 public:
@@ -84,7 +90,9 @@ public:
     }
 };
 
-/* multiplication */
+/* multiplication 
+    - takes any number of inputs
+*/
 class Mul : public Op
 {
 public:
@@ -105,7 +113,27 @@ public:
     }
 };
 
-/* square 
+/* difference 
+    - takes exactly two inputs
+    - assumes exactly two parents in parArr
+    - 0th parent val - 1st parent val
+*/
+class Dif : public Op
+{
+public:
+    void operator()(Node* node)
+    {
+        node->m_val = node->m_parArr[0]->m_val - node->m_parArr[1]->m_val;
+    }
+    void derivatives(Node* node)
+    {
+        node->m_derivArr[0] = 1.0;
+        node->m_derivArr[1] = -1.0;
+    }
+}; 
+
+/* square
+    - takes exactly one input
     - assumes only one parent in parArr
 */
 class Squ : public Op
@@ -118,6 +146,27 @@ public:
     void derivatives(Node* node)
     {
         node->m_derivArr[0] = 2.0 * node->m_parArr[0]->m_val;
+    }
+};
+
+/* sigmoid
+    - takes exactly one input
+    - assumes only one parent in parArr
+    - derivatives must only be executed once operator() has been executed
+*/
+class Sig : public Op
+{
+public:
+    void operator()(Node* node)
+    {
+        node->m_val = exp(-1.0 * node->m_parArr[0]->m_val);
+        node->m_val = 1.0 / (1.0 + node->m_val);
+        //std::cout << "Sigmoid val: " << node->m_val << std::endl;
+    }
+    void derivatives(Node* node)
+    {
+        node->m_derivArr[0] = node->m_val * (1.0 - node->m_val);
+        //std::cout << "Sigmoid derivative: " << node->m_derivArr[0] << std::endl;
     }
 };
 
@@ -180,6 +229,9 @@ public:
     double readDeriv(const Pos& pos, const unsigned int& ind);
     void writeVal(const Pos& pos, const double& val);
     void reset();
+
+    // graph union
+    void append(const CompGraph& cg); // fully connects another comp graph
 
     // optimisation
     DerivChain getChain(const Pos& start, const Pos& end);
@@ -283,6 +335,12 @@ void CompGraph::exec()
     }
 }
 
+/* append another graph to this graph */
+void CompGraph::append(const CompGraph& cg)
+{
+
+}
+
 /*****************************************************************************************************/
 /* Optimisation */
 
@@ -343,6 +401,7 @@ double CompGraph::chainDeriv(const DerivChain& chain)
 }
 
 /* optimise for a vector of batches of sample data
+    - currently automatically creates chain derivs
     - input variables are either weight or static
     - the sample data is static
     - the optimisation parameters are weights
@@ -405,10 +464,12 @@ void CompGraph::optimise(
             }
         }
 
+        std::cout << "Cost: " << this->m_nodeArr[this->pos2ind(costPos)]->m_val << std::endl;
         // adjust weights
         for (int i = 0; i < weightPosArr.size(); ++i)
         {
             this->m_nodeArr[this->pos2ind(weightPosArr[i])]->m_val += -0.5 * 0.01 * derivArr[i];
+            std::cout << "Derivative for weight " << i << ": " << derivArr[i] << std::endl;
         }
 
         // check convergence
@@ -418,6 +479,45 @@ void CompGraph::optimise(
         }
         counter++;
     }
+}
+
+
+
+/**********************************************************************************************************************************************/
+/* DEMO GRAPHS */
+
+CompGraph* ANDGate()
+{
+    Sum* sum = new Sum;
+    Mul* mul = new Mul;
+    Squ* squ = new Squ;
+    Dif* dif = new Dif;
+    Sig* sig = new Sig;
+
+    // nodes adjacency list
+    std::vector<AdjListElem*> adjList;
+    // col 0
+    adjList.push_back(new AdjListElem(Pos(0, 0), {}, {Pos(1, 0)}, nullptr)); // weight 0
+    adjList.push_back(new AdjListElem(Pos(0, 1), {}, {Pos(1, 1)}, nullptr)); // weight 1
+    adjList.push_back(new AdjListElem(Pos(0, 2), {}, {Pos(1, 0)}, nullptr)); // imput 0
+    adjList.push_back(new AdjListElem(Pos(0, 3), {}, {Pos(1, 1)}, nullptr)); // input 1
+    // col 1
+    adjList.push_back(new AdjListElem(Pos(1, 0), {Pos(0, 0), Pos(0, 2)}, {Pos(2, 0)}, mul));
+    adjList.push_back(new AdjListElem(Pos(1, 1), {Pos(0, 1), Pos(0, 3)}, {Pos(2, 0)}, mul));
+    // col 2
+    adjList.push_back(new AdjListElem(Pos(2, 0), {Pos(1, 0), Pos(1, 1)}, {Pos(3, 0)}, sum));
+    // col 3
+    adjList.push_back(new AdjListElem(Pos(3, 0), {Pos(2, 0)}, {Pos(4, 0)}, sig)); // sigmoid 
+    adjList.push_back(new AdjListElem(Pos(3, 1), {}, {Pos(4, 0)}, nullptr)); // correct input
+    // col 4
+    adjList.push_back(new AdjListElem(Pos(4, 0), {Pos(3, 0), Pos(3, 1)}, {Pos(5, 0)}, dif));
+    // col 5
+    adjList.push_back(new AdjListElem(Pos(5, 0), {Pos(4, 0)}, {}, squ)); // cost
+
+    // create graph
+    CompGraph* cg = new CompGraph({4, 2, 1, 2, 1, 1}, adjList);
+    
+    return cg;
 }
 
 }; // namespace mllib

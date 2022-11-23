@@ -10,12 +10,7 @@ William Denny, 30th August 2020
 #include <assert.h>
 #include <string>
 
-#include <probability.hpp>
-
-namespace mllib
-{
-namespace rl 
-{
+#include "../mathlib/probability.hpp"
 
 /* 
 ============================================================================================
@@ -28,34 +23,28 @@ namespace rl
 class Action
 {
 private:
-    std::vector<double> m_transDist;
+    std::vector<double> m_transitions;
     std::vector<double> m_rewards;
     
 public:
     Action();
-    Action(const std::vector<double>& transDist, const std::vector<double>& rewards);
+    Action(const std::vector<double>& transitions, const std::vector<double>& rewards)
+    {
+        assert(transDist.size() == rewards.size());
+        m_transDist = transDist;
+        m_rewards = rewards;
+    }
     
-    std::tuple<int, double> take();
+    std::tuple<int, double> take()
+    {
+        int stateIndex = mathlib::Probability::discreteEvent(m_transDist);
+        double reward = m_rewards[stateIndex];
+        return std::make_tuple(stateIndex, reward);
+    }
 };
 
-Action::Action()
-{
-
-}
-
-Action::Action(const std::vector<double>& transDist, const std::vector<double>& rewards)
-{
-    assert(transDist.size() == rewards.size());
-    m_transDist = transDist;
-    m_rewards = rewards;
-}
-
 std::tuple<int, double> Action::take()
-{
-    int stateIndex = mathlib::Probability::discreteEvent(m_transDist);
-    double reward = m_rewards[stateIndex];
-    return std::make_tuple(stateIndex, reward);
-}
+
 
 /* 
 ============================================================================================
@@ -541,6 +530,4 @@ void Agent<T>::printActionValues()
         
         std::cout << " }" << std::endl;    
     }
-}
-}
 }
