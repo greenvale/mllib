@@ -16,11 +16,22 @@ public:
     std::vector<mathlib::Matrix*> m_layers;
 
 public:
+    // lambda expressions for uniform matrix operations
+    static constexpr auto randomise = []() { return  mathlib::Probability::randomRealNumber(); }; // lambda expression for randomisation
+    static constexpr auto sigmoidActivation = [](double x){ return 1.0 / (1.0 + exp(-1.0 * x)); };
+    static constexpr auto sigmoidActivationDiff = [](double x){ return x * (1.0 - x); };
+
+public:
     NeuralNetwork() = delete;
     NeuralNetwork(const std::vector<unsigned int> shape);
+
     mathlib::Matrix evaluate(const mathlib::Matrix& input);
+
+    double regressLoss(const double& y, const double& a);
+    double regressLossDiff(const double& y, const double& a);
     double logisticLoss(const double& y, const double& a);
     double logisticLossDiff(const double& y, const double& a);
+
     void train(
         const mathlib::Matrix& trainingInput,
         const mathlib::Matrix& trainingOutput,
@@ -50,9 +61,9 @@ NeuralNetwork::NeuralNetwork(const std::vector<unsigned int> shape)
 
         if (i > 0)
         {
-            mathlib::Matrix* weight = new mathlib::Matrix({this->m_shape[i - 1], this->m_shape[i]});
-            mathlib::Matrix* bias = new mathlib::Matrix({this->m_shape[i], 1});
-            mathlib::Matrix* prelayer = new mathlib::Matrix({this->m_shape[i], 1}, 0.0);
+            mathlib::Matrix* weight     = new mathlib::Matrix({this->m_shape[i - 1], this->m_shape[i]});
+            mathlib::Matrix* bias       = new mathlib::Matrix({this->m_shape[i], 1});
+            mathlib::Matrix* prelayer   = new mathlib::Matrix({this->m_shape[i], 1}, 0.0);
             this->m_weights.push_back(weight);
             this->m_biases.push_back(bias);
             this->m_prelayers.push_back(prelayer);
@@ -60,7 +71,6 @@ NeuralNetwork::NeuralNetwork(const std::vector<unsigned int> shape)
     }
 
     // initialise weightings with random numbers
-    auto randomise = []() { return  mathlib::Probability::randomRealNumber(); }; // lambda expression for randomisation
     for (int i = 0; i < this->m_weights.size(); ++i)
     {
         this->m_weights[i]->operation(randomise);
@@ -73,16 +83,26 @@ mathlib::Matrix NeuralNetwork::evaluate(const mathlib::Matrix& input)
 {
     *(this->m_layers[0]) = input; // set the input
 
-    auto activation = [](double x){ return 1.0 / (1.0 + exp(-1.0 * x)); }; // activation function lambda expression
-
     for (int i = 1; i < this->m_numLayers; ++i)
     {
         *(this->m_prelayers[i - 1]) = this->m_weights[i - 1]->transpose() * *(this->m_layers[i - 1]); 
         *(this->m_layers[i]) = *(this->m_prelayers[i - 1]);
-        this->m_layers[i]->operation(activation);
+        this->m_layers[i]->operation(sigmoidActivation);
     }
 
     return *(this->m_layers[this->m_numLayers - 1]); // return output (from output layer)
+}
+
+/* regression loss function */
+double NeuralNetwork::regressLoss(const double& y, const double& a)
+{
+    return 0.5 * (y - a) * (y - a);
+}
+
+/* differential of regression loss function */
+double NeuralNetwork::regressLossDiff(const double& y, const double& a)
+{
+    return (y - a);
 }
 
 /* logistic loss function */
@@ -97,7 +117,7 @@ double NeuralNetwork::logisticLossDiff(const double& y, const double& a)
     return -(y/a) + (1.0 - y)/(1.0 - a);
 }
 
-/* training with gradient descent */
+/* trains network with gradient descent */
 void NeuralNetwork::train(
     const mathlib::Matrix& trainingInput,
     const mathlib::Matrix& trainingOutput,
@@ -106,47 +126,35 @@ void NeuralNetwork::train(
     const unsigned int& maxIter
 )
 {
-    auto activationDiff = [](double x){ return x * (1.0 - x); }; // activation function lambda expression
-
     // training loop
     for (unsigned int n = 0; n < maxIter; ++n)
     {
-        // evalulate network
+        // evalulate network to get values at each layer
         mathlib::Matrix output = this->evaluate(trainingInput);
 
-        // calculate loss and dJ/daFinal
+        // calculate loss and dJ/daOutputLayer
         double loss = 0.0;
-        mathlib::Matrix dJ_daFinal({1, m_shape[m_numLayers - 1]});
+        mathlib::Matrix dJ_daOutputLayer({1, m_shape[m_numLayers - 1]});
         for (unsigned int i = 0; i < m_shape[m_numLayers - 1]; ++i)
         {
             loss += logisticLoss(trainingOutput.get({i, 0}), output.get({i, 0}));
-            dJ_daFinal.set({0, i}, logisticLossDiff(trainingOutput.get({i, 0}), output.get({i, 0})));
+            dJ_daOutputLayer.set({0, i}, logisticLossDiff(trainingOutput.get({i, 0}), output.get({i, 0})));
         }
 
         std::cout << "Iteration (" << n << ") - Loss: " << loss << std::endl;
         std::cout << std::endl;
         
         // vector for chain derivative accumulation for each layer
-        std::vector<mathlib::Matrix> chainDerivs(m_numLayers - 1, dJ_daFinal);
+        std::vector<mathlib::Matrix> chainDerivs(m_numLayers - 1, dJ_daOutputLayer);
 
         // go through each layer update weights and biases
         for (unsigned int i = m_numLayers - 1; i > 0; --i)
         {
-            std::cout << "Layer " << i << std::endl << std::endl;
-
             // for this layer calculate da/dz
-            //mathlib::Matrix da_dz({m_shape[i], m_shape[i]}, 0.0);
-
             mathlib::Matrix da_dz_diag = *(m_layers[i]);
-            da_dz_diag.operation(activationDiff);
+            da_dz_diag.operation(sigmoidActivationDiff);
             mathlib::Matrix da_dz = mathlib::Matrix::diag(da_dz_diag);
 
-/*
-            for (unsigned int j = 0; j < m_shape[i]; ++j)
-            {
-                da_dz.set({j, j}, m_layers[i]->get({j, 0}) * (1.0 - m_layers[i]->get({j, 0}))); // equation for sigmoid derivative
-            }
-*/
             // for this layer calculate dW
             mathlib::Matrix dW({m_shape[i - 1], m_shape[i]}, 0.0);
             for (unsigned int j = 0; j < m_shape[i - 1]; ++j)
@@ -155,96 +163,29 @@ void NeuralNetwork::train(
                 mathlib::Matrix dW_row = chainDerivs[i - 1] * da_dz * dz_dW_byInput;
                 dW.setRegion({j, 0}, dW_row); // set row in dW to be equal to calculated row
             }
-            dW.display();
 
-            // for this layer calculate dz/daPrev = weightTransposed
+            // for this layer calculate dz/daPrev (= weightTransposed)
             mathlib::Matrix dz_daPrev = (*(m_weights[i - 1])).transpose();
 
+            // go through layers and update weights and biases if j = current layer or accumulate chain derivs if other layers
             for (unsigned int j = i; j > 0; --j)
             {
                 if (j == i)
                 {
-                    std::cout << "Exit layer " << j << std::endl;
                     *(m_weights[i - 1]) += -1.0 * learningRate * dW;
-                    *(m_biases[i - 1]) += -1.0 * learningRate * (chainDerivs[i - 1] * da_dz).transpose();
+                    *(m_biases[i - 1])  += -1.0 * learningRate * (chainDerivs[i - 1] * da_dz).transpose();
                 }
                 else
                 {
-                    std::cout << "Continue layer " << j << std::endl;
                     chainDerivs[j - 1] = chainDerivs[j - 1] * da_dz * dz_daPrev;
                 }
             }
-            std::cout << std::endl;
         }
-        // 
-        
+                
         if (loss < tol)
             break;
     }
 
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-std::vector<mathlib::Matrix> NeuralNetwork::getWeightUpdates(const mathlib::Matrix& trainingInput, const mathlib::Matrix& trainingOutput)
-{
-    mathlib::Matrix output = this->evaluate(trainingInput);
-
-    // dJ/da for final layer
-    mathlib::Matrix dJ_daFinal({1, m_shape[m_numLayers - 1]});
-    for (unsigned int i = 0; i < m_shape[m_numLayers - 1]; ++i)
-    {
-        double val = -(trainingOutput.get({i,0}) / output.get({i,0})) + ((1.0 - trainingOutput.get({i,0})) / (1.0 - output.get({i,0})));
-        dJ_daFinal.set({0, i}, val);
-    }
-
-    // initialise vector of chain derivative matrices
-    std::vector<mathlib::Matrix> chainDerivs(m_numLayers - 1, dJ_daFinal);
-
-    for (unsigned int i = 0; i < m_numLayers - 1; ++i)
-    {
-        unsigned int layerInd = m_numLayers - 1 - i;
-
-        mathlib::Matrix da_dz({m_shape[layerInd], m_shape[layerInd]}, 0.0);
-        for (unsigned int j = 0; j < layerInd; ++j)
-        {
-            da_dz.set({j,j}, m_layers[layerInd]->get({j,0}));
-        }
-
-        da_dz.display();
-        
-        // configure weights for this layer
-        for (unsigned int j = 0; j < m_shape[layerInd - 1]; ++j)
-        {
-
-        }
-
-
-        // add chain deriv for other layers
-        for (unsigned int j = i + 1; j < m_numLayers; ++j)
-        {
-
-        }
-    }
-
-    return {};
 }
 
 /* display neural network layers and weights */
