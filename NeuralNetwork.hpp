@@ -40,9 +40,6 @@ public:
         const unsigned int& maxIter
     );
 
-
-
-    std::vector<mathlib::Matrix> getWeightUpdates(const mathlib::Matrix& trainingInput, const mathlib::Matrix& trainingOutput);
     void display();
 };
 
