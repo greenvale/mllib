@@ -33,8 +33,8 @@ public:
     double logisticLossDiff(const double& y, const double& a);
 
     void train(
-        const mathlib::Matrix& trainingInput,
-        const mathlib::Matrix& trainingOutput,
+        const std::vector<std::vector<double>>& trainingInput,
+        const std::vector<std::vector<double>>& trainingOutput,
         const double& learningRate,
         const double& tol,
         const unsigned int& maxIter
@@ -82,7 +82,7 @@ mathlib::Matrix NeuralNetwork::evaluate(const mathlib::Matrix& input)
 
     for (int i = 1; i < this->m_numLayers; ++i)
     {
-        *(this->m_prelayers[i - 1]) = this->m_weights[i - 1]->transpose() * *(this->m_layers[i - 1]); 
+        *(this->m_prelayers[i - 1]) = (this->m_weights[i - 1]->transpose() * *(this->m_layers[i - 1])) + *(this->m_biases[i - 1]); 
         *(this->m_layers[i]) = *(this->m_prelayers[i - 1]);
         this->m_layers[i]->operation(sigmoidActivation);
     }
@@ -116,70 +116,131 @@ double NeuralNetwork::logisticLossDiff(const double& y, const double& a)
 
 /* trains network with gradient descent */
 void NeuralNetwork::train(
-    const mathlib::Matrix& trainingInput,
-    const mathlib::Matrix& trainingOutput,
+    const std::vector<std::vector<double>>& trainingInputs,
+    const std::vector<std::vector<double>>& trainingOutputs,
     const double& learningRate,
     const double& tol,
     const unsigned int& maxIter
 )
 {
+    assert(trainingInputs.size() > 0);
+    assert(trainingOutputs.size() > 0);
+
     // training loop
     for (unsigned int n = 0; n < maxIter; ++n)
     {
-        // evalulate network to get values at each layer
-        mathlib::Matrix output = this->evaluate(trainingInput);
-
-        // calculate loss and dJ/daOutputLayer
-        double loss = 0.0;
-        mathlib::Matrix dJ_daOutputLayer({1, m_shape[m_numLayers - 1]});
-        for (unsigned int i = 0; i < m_shape[m_numLayers - 1]; ++i)
+        std::vector<mathlib::Matrix> weightAdjustments = {};
+        std::vector<mathlib::Matrix> biasAdjustments = {};
+        for (unsigned int i = 0; i < m_weights.size(); ++i)
         {
-            loss += logisticLoss(trainingOutput.get({i, 0}), output.get({i, 0}));
-            dJ_daOutputLayer.set({0, i}, logisticLossDiff(trainingOutput.get({i, 0}), output.get({i, 0})));
+            mathlib::Matrix dW(m_weights[i]->size(), 0.0);
+            mathlib::Matrix db(m_biases[i]->size(), 0.0);
+            weightAdjustments.push_back(dW);
+            biasAdjustments.push_back(db);
         }
 
-        std::cout << "Iteration (" << n << ") - Loss: " << loss << std::endl;
-        std::cout << std::endl;
+        double avgLoss = 0.0;
         
-        // vector for chain derivative accumulation for each layer
-        std::vector<mathlib::Matrix> chainDerivs(m_numLayers - 1, dJ_daOutputLayer);
-
-        // go through each layer update weights and biases
-        for (unsigned int i = m_numLayers - 1; i > 0; --i)
+        for (unsigned int s = 0; s < trainingInputs.size(); ++s)
         {
-            // for this layer calculate da/dz
-            mathlib::Matrix da_dz_diag = *(m_layers[i]);
-            da_dz_diag.operation(sigmoidActivationDiff);
-            mathlib::Matrix da_dz = mathlib::Matrix::diag(da_dz_diag);
+            std::cout << "Training example: " << s << std::endl;
 
-            // for this layer calculate dW
-            mathlib::Matrix dW({m_shape[i - 1], m_shape[i]}, 0.0);
-            for (unsigned int j = 0; j < m_shape[i - 1]; ++j)
+            assert(trainingInputs[s].size() == m_shape[0]);
+            assert(trainingOutputs[s].size() == m_shape[m_numLayers - 1]);
+
+            mathlib::Matrix trainingInput = mathlib::Matrix({1, m_shape[0]}, {trainingInputs[s]}).transpose();
+            mathlib::Matrix trainingOutput = mathlib::Matrix({1, m_shape[m_numLayers - 1]}, {trainingOutputs[s]}).transpose();
+
+            // evalulate network to get values at each layer
+            mathlib::Matrix output = this->evaluate(trainingInput);
+
+            // calculate loss and dJ/daOutputLayer
+            double loss = 0.0;
+            mathlib::Matrix dJ_da_outputLayer({1, m_shape[m_numLayers - 1]});
+            for (unsigned int i = 0; i < m_shape[m_numLayers - 1]; ++i)
             {
-                mathlib::Matrix dz_dW_byInput = mathlib::Matrix::identity(m_shape[i]) * m_layers[i - 1]->get({j, 0});
-                mathlib::Matrix dW_row = chainDerivs[i - 1] * da_dz * dz_dW_byInput;
-                dW.setRegion({j, 0}, dW_row); // set row in dW to be equal to calculated row
+                loss += logisticLoss(trainingOutput.get({i, 0}), output.get({i, 0}));
+                dJ_da_outputLayer.set({0, i}, logisticLossDiff(trainingOutput.get({i, 0}), output.get({i, 0})));
             }
+            avgLoss += loss / trainingInputs.size();
 
-            // for this layer calculate dz/daPrev (= weightTransposed)
-            mathlib::Matrix dz_daPrev = (*(m_weights[i - 1])).transpose();
+            std::cout << "Iteration (" << n << ") - Loss: " << loss << std::endl;
+            std::cout << std::endl;
+            
+            // vector for chain derivative accumulation for each layer
+            std::vector<mathlib::Matrix> chainDerivs(m_numLayers - 1, dJ_da_outputLayer);
 
-            // go through layers and update weights and biases if j = current layer or accumulate chain derivs if other layers
-            for (unsigned int j = i; j > 0; --j)
+            // go through each layer update weights and biases
+            for (unsigned int i = m_numLayers - 1; i > 0; --i)
             {
-                if (j == i)
+                // for this layer calculate da/dz
+                mathlib::Matrix da_dz_diag = *(m_layers[i]);
+                da_dz_diag.operation(sigmoidActivationDiff);
+                mathlib::Matrix da_dz = mathlib::Matrix::diag(da_dz_diag);
+
+                // for this layer calculate dW
+                mathlib::Matrix dW({m_shape[i - 1], m_shape[i]}, 0.0);
+                for (unsigned int j = 0; j < m_shape[i - 1]; ++j)
                 {
-                    *(m_weights[i - 1]) += -1.0 * learningRate * dW;
-                    *(m_biases[i - 1])  += -1.0 * learningRate * (chainDerivs[i - 1] * da_dz).transpose();
+                    mathlib::Matrix dz_dW_byInput = mathlib::Matrix::identity(m_shape[i]) * m_layers[i - 1]->get({j, 0});
+                    mathlib::Matrix dW_row = chainDerivs[i - 1] * da_dz * dz_dW_byInput;
+                    dW.setRegion({j, 0}, dW_row); // set row in dW to be equal to calculated row
                 }
-                else
+
+                // for this layer calculate dz/daPrev (= weightTransposed)
+                mathlib::Matrix dz_daPrev = (*(m_weights[i - 1])).transpose();
+
+                // go through layers and update weights and biases if j = current layer or accumulate chain derivs if other layers
+                for (unsigned int j = i; j > 0; --j)
                 {
-                    chainDerivs[j - 1] = chainDerivs[j - 1] * da_dz * dz_daPrev;
+                    if (j == i)
+                    {
+                        //*(m_weights[i - 1]) += -1.0 * learningRate * dW;
+                        //*(m_biases[i - 1])  += -1.0 * learningRate * (chainDerivs[i - 1] * da_dz).transpose();
+
+                        weightAdjustments[i - 1] += dW;
+                        biasAdjustments[i - 1] += (chainDerivs[i - 1] * da_dz).transpose();
+                    }
+                    else
+                    {
+                        chainDerivs[j - 1] = chainDerivs[j - 1] * da_dz * dz_daPrev;
+                    }
                 }
             }
         }
-                
-        if (loss < tol)
+
+        /*
+        mathlib::Matrix dW = weightAdjustments[0];
+        mathlib::Matrix db = biasAdjustments[0];
+
+        for (unsigned int i = 1; i < weightAdjustments.size(); ++i)
+        {
+            dW += weightAdjustments[i];
+            db += biasAdjustments[i];
+        }
+        
+        std::cout << "dW: " << std::endl;
+        dW.display();
+        std::cout << std::endl << "db: " << std::endl;
+        db.display();
+        std::cout << std::endl << std::endl;
+
+        *(m_weights[i]) += -1.0 * learningRate * dW;
+        *(m_biases[i])  += -1.0 * learningRate * db;
+        */
+        
+        // make weight adjustments across all training examples
+        for (unsigned int i = 0; i < m_numLayers - 1; ++i)
+        {
+            *(m_weights[i]) += -1.0 * learningRate * weightAdjustments[i];
+            *(m_biases[i]) += -1.0 * learningRate * biasAdjustments[i];
+
+            weightAdjustments[i].display();
+            std::cout << std::endl << std::endl;
+        }
+        
+
+        if (avgLoss < tol)
             break;
     }
 
