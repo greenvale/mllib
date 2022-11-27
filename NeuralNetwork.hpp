@@ -129,6 +129,7 @@ void NeuralNetwork::train(
     // training loop
     for (unsigned int n = 0; n < maxIter; ++n)
     {
+        // accumulation of weight adjustments for each layer across the training data
         std::vector<mathlib::Matrix> weightAdjustments = {};
         std::vector<mathlib::Matrix> biasAdjustments = {};
         for (unsigned int i = 0; i < m_weights.size(); ++i)
@@ -139,8 +140,10 @@ void NeuralNetwork::train(
             biasAdjustments.push_back(db);
         }
 
+        // accumulate average loss over each training data
         double avgLoss = 0.0;
         
+        // loop through training data
         for (unsigned int s = 0; s < trainingInputs.size(); ++s)
         {
             std::cout << "Training example: " << s << std::endl;
@@ -195,9 +198,7 @@ void NeuralNetwork::train(
                 {
                     if (j == i)
                     {
-                        //*(m_weights[i - 1]) += -1.0 * learningRate * dW;
-                        //*(m_biases[i - 1])  += -1.0 * learningRate * (chainDerivs[i - 1] * da_dz).transpose();
-
+                        // accumulate weight and bias adjustment for each layer for this example in vector
                         weightAdjustments[i - 1] += dW;
                         biasAdjustments[i - 1] += (chainDerivs[i - 1] * da_dz).transpose();
                     }
@@ -208,38 +209,14 @@ void NeuralNetwork::train(
                 }
             }
         }
-
-        /*
-        mathlib::Matrix dW = weightAdjustments[0];
-        mathlib::Matrix db = biasAdjustments[0];
-
-        for (unsigned int i = 1; i < weightAdjustments.size(); ++i)
-        {
-            dW += weightAdjustments[i];
-            db += biasAdjustments[i];
-        }
-        
-        std::cout << "dW: " << std::endl;
-        dW.display();
-        std::cout << std::endl << "db: " << std::endl;
-        db.display();
-        std::cout << std::endl << std::endl;
-
-        *(m_weights[i]) += -1.0 * learningRate * dW;
-        *(m_biases[i])  += -1.0 * learningRate * db;
-        */
         
         // make weight adjustments across all training examples
         for (unsigned int i = 0; i < m_numLayers - 1; ++i)
         {
             *(m_weights[i]) += -1.0 * learningRate * weightAdjustments[i];
             *(m_biases[i]) += -1.0 * learningRate * biasAdjustments[i];
-
-            weightAdjustments[i].display();
-            std::cout << std::endl << std::endl;
         }
         
-
         if (avgLoss < tol)
             break;
     }
